@@ -1,0 +1,10 @@
+Timestamp,IncidentID,Status,Severity,Reason,MagnitudeG,GyroDegS,GPS_Status,Latitude,Longitude,FixAgeSec,SMS_Status,SMS_Attempts
+"2026-10-28T06:37:20.208Z","INC-20261028-1001","CANCELLED","HIGH","High-G Impact Verified (5.71g, Gyro: 383.8°/s, Jerk: 4375.8g/s)","5.714","383.79","VALID_FIX","37.774929","-122.419416","0","PENDING","0"
+"2026-10-28T06:37:20.533Z","INC-20261028-1001","SENT","HIGH","High-G Impact Verified (5.66g, Gyro: 388.6°/s, Jerk: 4654.7g/s)","5.655","388.64","VALID_FIX","37.774929","-122.419416","0","SENT","1"
+"2026-10-28T06:37:23.181Z","INC-20261028-1001","SENT","HIGH","High-G Impact Verified (5.68g, Gyro: 389.6°/s, Jerk: 4581.0g/s)","5.68","389.57","NO_FIX","N/A","N/A","N/A","SENT","1"
+"2026-10-28T06:37:25.818Z","INC-20261028-1001","SENT","HIGH","High-G Impact Verified (5.83g, Gyro: 382.6°/s, Jerk: 4392.2g/s)","5.826","382.57","STALE_FIX","37.774929","-122.419416","152","SENT","1"
+"2026-10-28T06:37:28.448Z","INC-20261028-1001","FAILED","HIGH","High-G Impact Verified (5.55g, Gyro: 374.5°/s, Jerk: 4321.4g/s)","5.547","374.52","VALID_FIX","37.774929","-122.419416","0","FAILED","2"
+"2026-10-28T06:37:31.087Z","INC-20261028-1001","SENT","HIGH","Vehicle Rollover Detected (Roll Δ: 51.1°, Gyro: 386.2°/s)","5.919","386.17","VALID_FIX","37.774929","-122.419416","0","SENT","1"
+"2026-10-28T06:37:33.715Z","INC-20261028-1001","FAILED","HIGH","High-G Impact Verified (5.66g, Gyro: 383.2°/s, Jerk: 4362.3g/s)","5.662","383.21","VALID_FIX","37.774929","-122.419416","0","FAILED","2"
+"2026-10-28T06:37:36.554Z","INC-20261028-1001","CANCELLED","HIGH","Vehicle Rollover Detected (Roll Δ: 53.3°, Gyro: 394.1°/s)","5.762","394.1","VALID_FIX","37.774929","-122.419416","0","PENDING","0"
+"2026-10-28T06:37:37.627Z","INC-20261028-1001","FAILED","HIGH","Vehicle Rollover Detected (Roll Δ: 46.4°, Gyro: 378.4°/s)","5.822","378.4","VALID_FIX","37.774929","-122.419416","0","FAILED","2"

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CrashSense — AI-Assisted Accident Detection & Emergency Alert Telematics</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Top Navigation & System Status Bar -->
+  <header class="top-bar">
+    <div class="logo-group">
+      <div class="pulse-indicator live"></div>
+      <div>
+        <h1>CrashSense Telematics</h1>
+        <div class="sub-title">Intelligent Accident Detection & Cellular Emergency Alert System</div>
+      </div>
+    </div>
+
+    <div class="header-badges">
+      <div class="system-mode-tag">PC SIMULATION MODE</div>
+      <div id="connectionStatusBadge" class="badge badge-success">SSE CONNECTED</div>
+      <div id="masterStateBadge" class="badge badge-state-idle">IDLE</div>
+      <button id="audioToggleBtn" class="btn btn-sm btn-outline">🔊 Buzzer: ON</button>
+    </div>
+  </header>
+
+  <!-- Emergency Countdown Alert Banner (Revealed when COUNTDOWN or ALERT) -->
+  <section id="emergencyBanner" class="emergency-banner hidden">
+    <div class="banner-content">
+      <div class="alert-icon-wrap">
+        <div class="siren-light"></div>
+        <span class="warning-symbol">⚠️</span>
+      </div>
+      <div class="banner-text">
+        <h2 id="bannerTitle">SUSPECTED VEHICULAR COLLISION DETECTED</h2>
+        <p id="bannerDesc">Verification confirmed anomalous high-G collision shock. Buzzer activated. Dispatch countdown started.</p>
+        <div class="countdown-display">
+          <span class="countdown-label">DRIVER CANCELLATION WINDOW:</span>
+          <span id="countdownTimerVal" class="countdown-number">15</span>
+          <span class="countdown-unit">SECONDS</span>
+        </div>
+      </div>
+      <div class="banner-actions">
+        <button id="cancelAlarmBtn" class="btn btn-cancel-large">
+          🛑 CANCEL FALSE ALARM
+          <small>(Simulates Physical Dashboard Button)</small>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Grid Dashboard -->
+  <main class="dashboard-grid">
+
+    <!-- Column 1: IMU Sensor Telemetry & Multi-Stage Classification -->
+    <div class="card card-telemetry">
+      <div class="card-header">
+        <h3>📊 6-DOF IMU Sensor (MPU-6050)</h3>
+        <span id="sensorHealthBadge" class="badge badge-success">I2C ONLINE</span>
+      </div>
+
+      <div class="telemetry-gauges">
+        <!-- Acceleration Magnitude Gauge -->
+        <div class="gauge-container">
+          <div class="gauge-label">ACCEL MAGNITUDE</div>
+          <div class="gauge-value" id="accelMagVal">1.00 <span class="unit">g</span></div>
+          <div class="progress-bar-bg">
+            <div id="accelMagBar" class="progress-bar-fill" style="width: 20%;"></div>
+            <div class="threshold-marker" title="Trigger Threshold (3.2g)" style="left: 64%;"></div>
+          </div>
+          <div class="gauge-sub">Threshold: <span id="threshMagVal">3.2</span>g | Jerk: <span id="jerkVal">0.0</span> g/s</div>
+        </div>
+
+        <!-- 3-Axis Linear Acceleration -->
+        <div class="axis-bars">
+          <div class="axis-row">
+            <span class="axis-name">Ax:</span>
+            <div class="axis-bar-wrap"><div id="barAx" class="axis-bar" style="width: 50%;"></div></div>
+            <span id="valAx" class="axis-reading">0.00 g</span>
+          </div>
+          <div class="axis-row">
+            <span class="axis-name">Ay:</span>
+            <div class="axis-bar-wrap"><div id="barAy" class="axis-bar" style="width: 50%;"></div></div>
+            <span id="valAy" class="axis-reading">0.00 g</span>
+          </div>
+          <div class="axis-row">
+            <span class="axis-name">Az:</span>
+            <div class="axis-bar-wrap"><div id="barAz" class="axis-bar" style="width: 50%;"></div></div>
+            <span id="valAz" class="axis-reading">1.00 g</span>
+          </div>
+        </div>
+
+        <!-- Gyroscope Angular Rate -->
+        <div class="gauge-container">
+          <div class="gauge-label">ANGULAR RATE (GYROSCOPE)</div>
+          <div class="gauge-value" id="gyroMagVal">0.0 <span class="unit">°/s</span></div>
+          <div class="progress-bar-bg">
+            <div id="gyroMagBar" class="progress-bar-fill gyro-fill" style="width: 5%;"></div>
+            <div class="threshold-marker" title="Tumble Threshold (150°/s)" style="left: 50%;"></div>
+          </div>
+          <div class="gauge-sub">Roll: <span id="valRoll">0.0°</span> | Pitch: <span id="valPitch">0.0°</span></div>
+        </div>
+      </div>
+
+      <!-- Detection State Box -->
+      <div class="detection-classification-box">
+        <div class="clf-label">CLASSIFICATION PIPELINE:</div>
+        <div id="classificationVal" class="clf-status">NORMAL_MOVEMENT</div>
+        <div id="classificationReason" class="clf-reason">Kinematics within safe vehicular thresholds.</div>
+      </div>
+
+      <!-- Physics Scenario Trigger Buttons -->
+      <div class="scenario-actions">
+        <div class="section-label">SIMULATE REAL VEHICULAR SCENARIOS:</div>
+        <div class="button-grid">
+          <button class="btn btn-scenario" onclick="triggerScenario('NORMAL_DRIVING')">🚗 Normal Driving</button>
+          <button class="btn btn-scenario" onclick="triggerScenario('SUDDEN_BRAKING')">🛑 Hard Braking</button>
+          <button class="btn btn-scenario" onclick="triggerScenario('POTHOLE_BUMP')">🕳️ Bump / Pothole</button>
+          <button class="btn btn-scenario" onclick="triggerScenario('SHARP_TURN')">🔄 Sharp Turn</button>
+          <button class="btn btn-scenario btn-danger-trigger" onclick="triggerScenario('SIMULATED_CRASH')">💥 Severe Crash</button>
+          <button class="btn btn-scenario btn-danger-trigger" onclick="triggerScenario('ROLLOVER')">🔁 Rollover Crash</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 2: GNSS Location & 4G LTE Cellular Modem -->
+    <div class="card card-comms">
+      <!-- GPS Section -->
+      <div class="card-header">
+        <h3>🛰️ GNSS Location Receiver (NEO-6M)</h3>
+        <span id="gpsFixBadge" class="badge badge-success">VALID FIX</span>
+      </div>
+
+      <div class="gps-details-box">
+        <div class="gps-metric-row">
+          <div><span class="label">Lat/Lng:</span> <strong id="gpsCoords">37.774929, -122.419416</strong></div>
+          <div><span class="label">Fix Age:</span> <span id="gpsFixAge">0s</span></div>
+        </div>
+        <div class="gps-metric-row">
+          <div><span class="label">Satellites:</span> <span id="gpsSats">8</span></div>
+          <div><span class="label">HDOP:</span> <span id="gpsHdop">1.05</span></div>
+        </div>
+        <div class="gps-map-link-wrap">
+          <a id="gpsMapLink" href="https://maps.google.com/?q=37.774929,-122.419416" target="_blank" class="map-link">
+            📍 View Position on Google Maps
+          </a>
+          <span id="gpsStaleWarning" class="tag tag-stale hidden">⚠️ STALE FIX</span>
+        </div>
+      </div>
+
+      <!-- SIM7600 Modem Section -->
+      <div class="card-header" style="margin-top: 15px;">
+        <h3>📶 4G LTE Cellular Modem (SIM7600)</h3>
+        <span id="modemRegBadge" class="badge badge-success">CREG: REGISTERED</span>
+      </div>
+
+      <div class="modem-status-box">
+        <div class="modem-metric-row">
+          <div><span class="label">Power:</span> <strong id="modemPowerVal">ON</strong></div>
+          <div><span class="label">SIM:</span> <span id="modemSimVal">READY</span></div>
+          <div><span class="label">Signal CSQ:</span> <span id="modemCsqVal">22 (~ -69 dBm)</span></div>
+        </div>
+        <div class="modem-metric-row">
+          <div><span class="label">Carrier:</span> <span id="modemCarrierVal">MockTel 4G LTE</span></div>
+          <div><span class="label">SMS Sent:</span> <span id="modemSentCount">0</span></div>
+        </div>
+      </div>
+
+      <!-- Emergency Alert SMS Preview Card -->
+      <div class="sms-preview-card">
+        <div class="sms-header">
+          <span>📱 Outgoing Emergency SMS Payload</span>
+          <span id="smsStatusTag" class="tag tag-pending">IDLE</span>
+        </div>
+        <pre id="smsPayloadText">CRASHSENSE READY
+Target Recipient: +15550192834 (Mock Test Recipient)
+No emergency dispatch active.</pre>
+      </div>
+
+      <!-- Fault Injection Controls -->
+      <div class="fault-injection-box">
+        <div class="section-label">FAULT & ENVIRONMENTAL INJECTIONS:</div>
+        <div class="fault-controls">
+          <label class="toggle-control">
+            <input type="checkbox" id="chkSensorOnline" checked onchange="toggleSensor(this.checked)">
+            <span>MPU6050 I2C Connected</span>
+          </label>
+          <label class="toggle-control">
+            <input type="checkbox" id="chkGpsFix" checked onchange="toggleGpsFix(this.checked)">
+            <span>GPS Valid Fix</span>
+          </label>
+          <label class="toggle-control">
+            <input type="checkbox" id="chkModemPower" checked onchange="toggleModemPower(this.checked)">
+            <span>SIM7600 Power</span>
+          </label>
+          <label class="toggle-control">
+            <input type="checkbox" id="chkModemReg" checked onchange="toggleModemReg(this.checked)">
+            <span>Cellular Network (CREG)</span>
+          </label>
+          <label class="toggle-control">
+            <input type="checkbox" id="chkModemFail" onchange="toggleModemFailure(this.checked)">
+            <span>Inject Modem Error (+CMS 500)</span>
+          </label>
+        </div>
+        <div class="sim-actions-row">
+          <button class="btn btn-sm btn-warning" onclick="makeGpsStale()">Simulate Stale GPS Fix (>120s)</button>
+          <button class="btn btn-sm btn-secondary" onclick="resetSimulator()">🔄 Reset System Baseline</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 3: AT Modem Terminal & Incident Log -->
+    <div class="card card-logs">
+      <div class="card-header">
+        <h3>📟 SIM7600 AT Command Console</h3>
+        <button class="btn btn-xs btn-outline" onclick="clearATConsole()">Clear</button>
+      </div>
+      <div id="atConsole" class="terminal-box">
+        <div class="log-line sys">[SYSTEM] SIM7600 Modem Controller Initialized at 115200 baud</div>
+        <div class="log-line at">&gt; AT</div>
+        <div class="log-line resp">&lt; OK</div>
+        <div class="log-line at">&gt; AT+CPIN?</div>
+        <div class="log-line resp">&lt; +CPIN: READY</div>
+      </div>
+
+      <div class="at-input-bar">
+        <input type="text" id="atInput" placeholder="Enter AT Command (e.g. AT+CSQ, AT+CREG?)..." onkeydown="handleAtKey(event)">
+        <button class="btn btn-sm btn-primary" onclick="sendCustomAT()">Send</button>
+      </div>
+
+      <!-- Nearby Emergency Directory Lookup Table -->
+      <div class="card-header" style="margin-top: 15px;">
+        <h3>🏥 Nearby Emergency Services (Mock Directory)</h3>
+        <button class="btn btn-xs btn-outline" onclick="refreshNearbyServices()">Refresh</button>
+      </div>
+      <div id="nearbyServicesList" class="nearby-services-list">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- Incident History -->
+      <div class="card-header" style="margin-top: 15px;">
+        <h3>📜 Incident History & Telematics Audit Log</h3>
+        <button class="btn btn-xs btn-outline" onclick="clearIncidentLogs()">Clear History</button>
+      </div>
+      <div id="incidentHistoryTable" class="history-table-wrap">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Incident ID</th>
+              <th>Status</th>
+              <th>Peak G</th>
+              <th>GPS</th>
+              <th>SMS</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <tr><td colspan="6" style="text-align:center; color:#888;">No incidents recorded yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="footer-bar">
+    <div><strong>CrashSense Prototype v1.0.0</strong> | ESP32 + MPU6050 + NEO-6M + SIM7600 Telematics Pipeline</div>
+    <div class="disclaimer">⚠️ SAFETY NOTICE: Test mode active. Real emergency numbers (911/112) are never contacted.</div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

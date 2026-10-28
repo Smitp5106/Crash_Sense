@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+.pio/
+.vscode/
+
+# Environment Variables
+.env
+*.env.local
+
+# Build artifacts
+build/
+*.bin
+*.elf
+*.hex
+
+# Temporary OS / Editor Files
+.DS_Store
+Thumbs.db
+*.log

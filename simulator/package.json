@@ -1,0 +1,22 @@
+{
+  "name": "crashsense-simulator",
+  "version": "1.0.0",
+  "description": "CrashSense - Intelligent Accident Detection, Location Tracking, and Emergency Alert PC Simulator",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/runner.js"
+  },
+  "keywords": [
+    "iot",
+    "esp32",
+    "mpu6050",
+    "sim7600",
+    "gps",
+    "accident-detection",
+    "telematics"
+  ],
+  "author": "CrashSense Embedded Systems Team",
+  "license": "MIT"
+}
