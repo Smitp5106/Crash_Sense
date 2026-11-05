@@ -6,6 +6,9 @@ node_modules/
 # Environment Variables
 .env
 *.env.local
+cloud_server/.env
+firmware_r4/cloud_secrets.h
+firmware_r4/CrashSense_R4/cloud_secrets.h
 
 # Build artifacts
 build/
@@ -17,3 +20,4 @@ build/
 .DS_Store
 Thumbs.db
 *.log
+

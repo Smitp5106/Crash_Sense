@@ -1,0 +1,8 @@
+{
+  "name": "crashsense-cloud-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Small HTTPS-ready relay for CrashSense UNO R4 telemetry and dashboard commands",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}

@@ -1,0 +1,1 @@
+Timestamp,IncidentID,Status,Severity,Reason,MagnitudeG,GyroDegS,GPS_Status,Latitude,Longitude,FixAgeSec,SMS_Status,SMS_Attempts

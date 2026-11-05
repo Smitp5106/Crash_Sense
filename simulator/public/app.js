@@ -1,553 +1,424 @@
-/**
- * CrashSense Interactive Simulator Dashboard Client
- *
- * Connects via Server-Sent Events (SSE) to receive real-time 20Hz telematics.
- * Handles:
- * - Dynamic UI rendering of 6-DOF IMU gauges, GPS, and SIM7600 modem states.
- * - Web Audio API synthesized active piezo buzzer beeps during countdown.
- * - User interactions (cancellation button, scenario triggers, fault injections, AT console).
- */
+const $ = (id) => document.getElementById(id);
+let requestInFlight = false;
+let locationAuthorized = false;
+let locationRequestInFlight = false;
+let locationAuthConfigured = false;
 
-// Audio Buzzer Synthesizer using Web Audio API
-class AudioBuzzer {
-  constructor() {
-    this.audioCtx = null;
-    this.oscillator = null;
-    this.gainNode = null;
-    this.intervalId = null;
-    this.isEnabled = true;
-    this.isPlaying = false;
-  }
-
-  _initContext() {
-    if (!this.audioCtx) {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      this.audioCtx = new AudioContext();
-    }
-  }
-
-  startBeeping() {
-    if (!this.isEnabled || this.isPlaying) return;
-    this._initContext();
-    if (this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume();
-    }
-
-    this.isPlaying = true;
-    let beeping = false;
-
-    // Beep pattern: 2600Hz piezo pulse, 150ms ON, 150ms OFF
-    this.intervalId = setInterval(() => {
-      if (!this.isPlaying || !this.isEnabled) return;
-      try {
-        const osc = this.audioCtx.createOscillator();
-        const gain = this.audioCtx.createGain();
-        osc.type = 'square'; // Piezo active buzzer harmonic signature
-        osc.frequency.setValueAtTime(2600, this.audioCtx.currentTime);
-
-        gain.gain.setValueAtTime(0.08, this.audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, this.audioCtx.currentTime + 0.12);
-
-        osc.connect(gain);
-        gain.connect(this.audioCtx.destination);
-
-        osc.start();
-        osc.stop(this.audioCtx.currentTime + 0.12);
-      } catch (e) {
-        // Audio error suppression
-      }
-    }, 250);
-  }
-
-  stopBeeping() {
-    this.isPlaying = false;
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
-  }
-
-  toggle() {
-    this.isEnabled = !this.isEnabled;
-    if (!this.isEnabled) this.stopBeeping();
-    return this.isEnabled;
-  }
+function setBadge(element, text, className) {
+  element.textContent = text;
+  element.className = `connection-label ${className}`;
+  const dot = document.querySelector('.live-dot');
+  dot.className = `live-dot ${className}`;
 }
 
-const buzzer = new AudioBuzzer();
+function showOffline(message) {
+  setBadge($('connectionBadge'), 'No live connection', 'badge-offline');
+  $('offlineMessage').classList.remove('hidden');
+  $('offlineMessage').title = message || '';
+}
 
-// DOM References
-const emergencyBanner = document.getElementById('emergencyBanner');
-const countdownTimerVal = document.getElementById('countdownTimerVal');
-const cancelAlarmBtn = document.getElementById('cancelAlarmBtn');
-const masterStateBadge = document.getElementById('masterStateBadge');
-const connectionStatusBadge = document.getElementById('connectionStatusBadge');
-const audioToggleBtn = document.getElementById('audioToggleBtn');
+function showOnline() {
+  setBadge($('connectionBadge'), 'R4 connected', 'badge-online');
+  $('offlineMessage').classList.add('hidden');
+}
 
-const accelMagVal = document.getElementById('accelMagVal');
-const accelMagBar = document.getElementById('accelMagBar');
-const jerkVal = document.getElementById('jerkVal');
-const valAx = document.getElementById('valAx');
-const valAy = document.getElementById('valAy');
-const valAz = document.getElementById('valAz');
-const barAx = document.getElementById('barAx');
-const barAy = document.getElementById('barAy');
-const barAz = document.getElementById('barAz');
+function formatNumber(value, digits = 1) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(digits) : '--';
+}
 
-const gyroMagVal = document.getElementById('gyroMagVal');
-const gyroMagBar = document.getElementById('gyroMagBar');
-const valRoll = document.getElementById('valRoll');
-const valPitch = document.getElementById('valPitch');
+function clearPrivateLocation() {
+  $('speed').textContent = '--';
+  $('latitude').textContent = '--';
+  $('longitude').textContent = '--';
+  $('satellites').textContent = '--';
+  $('fixAge').textContent = '--';
+  $('mapLink').href = '#';
+  $('mapLink').classList.add('disabled');
+  $('mapLink').setAttribute('aria-disabled', 'true');
+}
 
-const classificationVal = document.getElementById('classificationVal');
-const classificationReason = document.getElementById('classificationReason');
-const sensorHealthBadge = document.getElementById('sensorHealthBadge');
+function setLocationAccess(enabled) {
+  locationAuthorized = enabled;
+  $('locationLocked').classList.toggle('hidden', enabled);
+  $('locationPrivate').classList.toggle('hidden', !enabled);
+  if (!enabled) clearPrivateLocation();
+}
 
-const gpsFixBadge = document.getElementById('gpsFixBadge');
-const gpsCoords = document.getElementById('gpsCoords');
-const gpsFixAge = document.getElementById('gpsFixAge');
-const gpsSats = document.getElementById('gpsSats');
-const gpsHdop = document.getElementById('gpsHdop');
-const gpsMapLink = document.getElementById('gpsMapLink');
-const gpsStaleWarning = document.getElementById('gpsStaleWarning');
+function openLocationLogin(message = '') {
+  $('authError').textContent = message;
+  $('authConfigNote').classList.toggle('hidden', locationAuthConfigured);
+  if (!locationAuthConfigured) $('authConfigNote').textContent = 'Location sign-in is not configured on the server yet.';
+  const dialog = $('locationDialog');
+  if (!dialog.open) dialog.showModal();
+  if (locationAuthConfigured) $('authUsername').focus();
+}
 
-const modemRegBadge = document.getElementById('modemRegBadge');
-const modemPowerVal = document.getElementById('modemPowerVal');
-const modemSimVal = document.getElementById('modemSimVal');
-const modemCsqVal = document.getElementById('modemCsqVal');
-const modemCarrierVal = document.getElementById('modemCarrierVal');
-const modemSentCount = document.getElementById('modemSentCount');
-const smsPayloadText = document.getElementById('smsPayloadText');
-const smsStatusTag = document.getElementById('smsStatusTag');
-
-const atConsole = document.getElementById('atConsole');
-const atInput = document.getElementById('atInput');
-const historyTableBody = document.getElementById('historyTableBody');
-const nearbyServicesList = document.getElementById('nearbyServicesList');
-
-// User Audio Toggle
-audioToggleBtn.addEventListener('click', () => {
-  const enabled = buzzer.toggle();
-  audioToggleBtn.textContent = enabled ? '🔊 Buzzer: ON' : '🔇 Buzzer: MUTED';
-  audioToggleBtn.classList.toggle('btn-outline', enabled);
-  audioToggleBtn.classList.toggle('btn-warning', !enabled);
-});
-
-// Driver Physical / Simulator Cancel Button
-cancelAlarmBtn.addEventListener('click', async () => {
+async function checkAuthStatus() {
   try {
-    const res = await fetch('/api/cancel', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason: 'Driver pressed physical dashboard button' })
-    });
-    const data = await res.json();
-    if (data.success) {
-      appendATLog('DRIVER_CONTROL', 'Cancellation command received. Aborting emergency dispatch.', 'sys');
-      buzzer.stopBeeping();
+    const response = await fetch('/api/auth/status', { cache: 'no-store', credentials: 'same-origin' });
+    const status = await response.json();
+    locationAuthConfigured = Boolean(status.configured);
+    if (status.authenticated) {
+      setLocationAccess(true);
+      await refreshPrivateLocation();
     }
-  } catch (err) {
-    console.error('Cancel request error:', err);
+  } catch {
+    locationAuthConfigured = false;
   }
-});
-
-// Setup Server-Sent Events (SSE)
-function setupSSE() {
-  const eventSource = new EventSource('/events');
-
-  eventSource.onopen = () => {
-    connectionStatusBadge.textContent = 'SSE CONNECTED';
-    connectionStatusBadge.className = 'badge badge-success';
-  };
-
-  eventSource.onerror = () => {
-    connectionStatusBadge.textContent = 'RECONNECTING...';
-    connectionStatusBadge.className = 'badge badge-warning';
-  };
-
-  eventSource.addEventListener('telemetry', (e) => {
-    const data = JSON.parse(e.data);
-    updateDashboard(data);
-  });
-
-  eventSource.addEventListener('countdown_tick', (e) => {
-    const data = JSON.parse(e.data);
-    countdownTimerVal.textContent = data.remainingSec;
-  });
-
-  eventSource.addEventListener('state_changed', (e) => {
-    const data = JSON.parse(e.data);
-    handleStateChange(data);
-  });
-
-  eventSource.addEventListener('at_transaction', (e) => {
-    const data = JSON.parse(e.data);
-    appendATLog(data.cmd, data.response, data.status === 'ERROR' ? 'err' : 'resp');
-  });
-
-  eventSource.addEventListener('sms_sent', (e) => {
-    const data = JSON.parse(e.data);
-    smsStatusTag.textContent = 'SENT';
-    smsStatusTag.className = 'tag tag-sent';
-    refreshIncidentLogs();
-  });
-
-  eventSource.addEventListener('sms_failed', (e) => {
-    const data = JSON.parse(e.data);
-    smsStatusTag.textContent = 'FAILED';
-    smsStatusTag.className = 'tag tag-failed';
-    refreshIncidentLogs();
-  });
 }
 
-function handleStateChange(transition) {
-  masterStateBadge.textContent = transition.currentState;
-
-  if (transition.currentState === 'COUNTDOWN') {
-    emergencyBanner.classList.remove('hidden');
-    masterStateBadge.className = 'badge badge-danger';
-    buzzer.startBeeping();
-  } else if (transition.currentState === 'ALERT_PENDING' || transition.currentState === 'SENDING') {
-    emergencyBanner.classList.remove('hidden');
-    masterStateBadge.className = 'badge badge-warning';
-    countdownTimerVal.textContent = '0';
-    buzzer.stopBeeping();
-  } else if (transition.currentState === 'CANCELLED') {
-    emergencyBanner.classList.add('hidden');
-    masterStateBadge.className = 'badge badge-warning';
-    buzzer.stopBeeping();
-    refreshIncidentLogs();
-  } else if (transition.currentState === 'SENT') {
-    emergencyBanner.classList.add('hidden');
-    masterStateBadge.className = 'badge badge-success';
-    buzzer.stopBeeping();
-    refreshIncidentLogs();
-  } else if (transition.currentState === 'FAILED') {
-    emergencyBanner.classList.add('hidden');
-    masterStateBadge.className = 'badge badge-danger';
-    buzzer.stopBeeping();
-    refreshIncidentLogs();
-  } else if (transition.currentState === 'SENSOR_FAULT') {
-    masterStateBadge.className = 'badge badge-danger';
-    buzzer.stopBeeping();
-  } else {
-    emergencyBanner.classList.add('hidden');
-    masterStateBadge.className = 'badge badge-state-idle';
-    buzzer.stopBeeping();
+async function refreshPrivateLocation() {
+  if (!locationAuthorized || locationRequestInFlight) return;
+  locationRequestInFlight = true;
+  try {
+    const response = await fetch('/api/device/location', { cache: 'no-store', credentials: 'same-origin' });
+    if (response.status === 401) {
+      setLocationAccess(false);
+      return;
+    }
+    if (!response.ok) throw new Error('Private location is currently unavailable.');
+    const data = await response.json();
+    const gps = data.gps || {};
+    $('speed').textContent = formatNumber(gps.speedKmh, 1);
+    $('latitude').textContent = gps.latitude == null ? 'Waiting for fix' : formatNumber(gps.latitude, 6);
+    $('longitude').textContent = gps.longitude == null ? 'Waiting for fix' : formatNumber(gps.longitude, 6);
+    $('satellites').textContent = gps.satellites ?? '--';
+    $('fixAge').textContent = gps.hasFix ? `${gps.fixAgeSec}s ago` : (gps.latitude != null ? 'Last known' : 'No fix');
+    if (gps.mapUrl && String(gps.mapUrl).startsWith('https://')) {
+      $('mapLink').href = gps.mapUrl;
+      $('mapLink').classList.remove('disabled');
+      $('mapLink').setAttribute('aria-disabled', 'false');
+    } else {
+      $('mapLink').href = '#';
+      $('mapLink').classList.add('disabled');
+      $('mapLink').setAttribute('aria-disabled', 'true');
+    }
+  } catch (error) {
+    clearPrivateLocation();
+    $('latitude').textContent = 'Unavailable';
+    $('longitude').textContent = 'Unavailable';
+    $('authError').textContent = error.message;
+  } finally {
+    locationRequestInFlight = false;
   }
 }
 
 function updateDashboard(data) {
-  const { sensor, detection, gps, modem, alert } = data;
+  const motion = data.motion || {};
+  const gps = data.gps || {};
+  const system = data.system || {};
+  const detection = data.detection || {};
+  const incident = data.incident || {};
+  showOnline();
 
-  // 1. Sensor Telemetry
-  if (sensor.isConnected) {
-    sensorHealthBadge.textContent = 'I2C ONLINE';
-    sensorHealthBadge.className = 'badge badge-success';
+  const state = system.state || 'UNKNOWN';
+  $('stateBadge').textContent = state.replaceAll('_', ' ');
+  $('stateBadge').className = `state-pill ${state === 'IDLE' ? 'state-idle' : (state === 'COUNTDOWN' || state === 'EMERGENCY_ALERT' ? 'state-alert' : '')}`;
+  $('sensorBadge').textContent = motion.sensorReady === false ? 'Sensor unavailable' : 'Sensor active';
+  $('sensorBadge').className = `small-status ${motion.sensorReady === false ? 'sensor-error' : 'sensor-ok'}`;
+  $('totalG').innerHTML = `${formatNumber(motion.totalG, 2)}<small> g</small>`;
+  $('gyro').innerHTML = `${formatNumber(motion.gyroMag, 1)} <small>°/s</small>`;
+  $('jerk').innerHTML = `${formatNumber(motion.jerk, 1)} <small>g/s</small>`;
+  $('ax').textContent = formatNumber(motion.ax, 2);
+  $('ay').textContent = formatNumber(motion.ay, 2);
+  $('az').textContent = formatNumber(motion.az, 2);
+  $('roll').textContent = `${formatNumber(motion.roll, 1)}°`;
+  $('pitch').textContent = `${formatNumber(motion.pitch, 1)}°`;
+  $('classification').textContent = detection.classification || 'Unknown';
+  $('classificationReason').textContent = detection.reason || 'No detection details from the board.';
+  $('classificationPanel').classList.toggle('alert', state === 'COUNTDOWN' || state === 'EMERGENCY_ALERT');
 
-    accelMagVal.innerHTML = `${sensor.magnitude.toFixed(2)} <span class="unit">g</span>`;
-    const magPercent = Math.min(100, (sensor.magnitude / 5.0) * 100);
-    accelMagBar.style.width = `${magPercent}%`;
+  const hasFix = Boolean(gps.hasFix);
+  $('gpsBadge').textContent = hasFix ? 'GPS active · protected' : 'No GPS fix';
+  $('gpsBadge').className = `small-status ${hasFix ? 'sensor-ok' : 'sensor-error'}`;
 
-    jerkVal.textContent = sensor.jerk.toFixed(1);
-    valAx.textContent = `${sensor.ax.toFixed(2)} g`;
-    valAy.textContent = `${sensor.ay.toFixed(2)} g`;
-    valAz.textContent = `${sensor.az.toFixed(2)} g`;
-
-    barAx.style.width = `${Math.min(100, Math.max(0, (sensor.ax + 4) / 8 * 100))}%`;
-    barAy.style.width = `${Math.min(100, Math.max(0, (sensor.ay + 4) / 8 * 100))}%`;
-    barAz.style.width = `${Math.min(100, Math.max(0, (sensor.az + 4) / 8 * 100))}%`;
-
-    gyroMagVal.innerHTML = `${sensor.gyroMagnitude.toFixed(1)} <span class="unit">°/s</span>`;
-    const gyroPercent = Math.min(100, (sensor.gyroMagnitude / 300.0) * 100);
-    gyroMagBar.style.width = `${gyroPercent}%`;
-
-    valRoll.textContent = `${sensor.roll.toFixed(1)}°`;
-    valPitch.textContent = `${sensor.pitch.toFixed(1)}°`;
-  } else {
-    sensorHealthBadge.textContent = 'I2C DISCONNECTED';
-    sensorHealthBadge.className = 'badge badge-danger';
-    accelMagVal.innerHTML = `ERR <span class="unit">g</span>`;
-    gyroMagVal.innerHTML = `ERR <span class="unit">°/s</span>`;
+  const countdown = state === 'COUNTDOWN';
+  const emergency = state === 'EMERGENCY_ALERT';
+  $('alertBanner').classList.toggle('hidden', !countdown && !emergency);
+  if (countdown || emergency) {
+    $('alertTitle').textContent = countdown ? 'Crash suspected' : 'Emergency alert active';
+    $('alertReason').textContent = detection.reason || 'Check the vehicle.';
+    $('countdownBlock').classList.toggle('hidden', !countdown);
+    $('countdownValue').textContent = formatNumber(system.countdownSec, 0);
+    $('cancelButton').classList.toggle('hidden', !countdown);
   }
 
-  // 2. Detection Pipeline Status
-  classificationVal.textContent = detection.classification;
-  classificationReason.textContent = detection.reason;
-
-  if (detection.classification === 'NORMAL_MOVEMENT') {
-    classificationVal.style.color = '#00e676';
-  } else if (detection.classification === 'POSSIBLE_IMPACT') {
-    classificationVal.style.color = '#ffab00';
-  } else if (detection.classification === 'SUSPECTED_ACCIDENT' || detection.classification === 'HIGH_SEVERITY_CANDIDATE') {
-    classificationVal.style.color = '#ff1744';
-  } else if (detection.classification === 'FALSE_ALARM') {
-    classificationVal.style.color = '#79c0ff';
-  } else if (detection.classification === 'SENSOR_FAULT') {
-    classificationVal.style.color = '#f85149';
-  }
-
-  // 3. GNSS / GPS Status
-  if (gps.status === 'VALID_FIX') {
-    gpsFixBadge.textContent = 'VALID FIX';
-    gpsFixBadge.className = 'badge badge-success';
-    gpsStaleWarning.classList.add('hidden');
-    gpsCoords.textContent = `${gps.location.lat.toFixed(5)}, ${gps.location.lng.toFixed(5)}`;
-    gpsFixAge.textContent = `${gps.location.fixAgeSec}s`;
-    gpsMapLink.href = gps.location.mapUrl;
-    gpsMapLink.style.pointerEvents = 'auto';
-    gpsMapLink.style.opacity = '1.0';
-  } else if (gps.status === 'STALE_FIX') {
-    gpsFixBadge.textContent = 'STALE FIX';
-    gpsFixBadge.className = 'badge badge-warning';
-    gpsStaleWarning.classList.remove('hidden');
-    gpsCoords.textContent = `${gps.location.lat.toFixed(5)}, ${gps.location.lng.toFixed(5)} (LAST KNOWN)`;
-    gpsFixAge.textContent = `${gps.location.fixAgeSec}s (STALE)`;
-    gpsMapLink.href = gps.location.mapUrl;
-    gpsMapLink.style.pointerEvents = 'auto';
-    gpsMapLink.style.opacity = '1.0';
-  } else {
-    gpsFixBadge.textContent = 'NO FIX';
-    gpsFixBadge.className = 'badge badge-danger';
-    gpsStaleWarning.classList.add('hidden');
-    gpsCoords.textContent = 'Searching Satellites...';
-    gpsFixAge.textContent = 'N/A';
-    gpsMapLink.href = '#';
-    gpsMapLink.style.pointerEvents = 'none';
-    gpsMapLink.style.opacity = '0.5';
-  }
-
-  gpsSats.textContent = gps.satellites;
-  gpsHdop.textContent = gps.hdop.toFixed(2);
-
-  // 4. SIM7600 Modem Status
-  modemPowerVal.textContent = modem.isPowered ? 'ON' : 'OFF';
-  modemPowerVal.style.color = modem.isPowered ? '#00e676' : '#ff1744';
-
-  modemSimVal.textContent = modem.simStatus;
-  modemCsqVal.textContent = `${modem.signalStrengthCSQ} (~ ${-113 + (modem.signalStrengthCSQ * 2)} dBm)`;
-  modemCarrierVal.textContent = modem.operator;
-  modemSentCount.textContent = modem.totalSent;
-
-  if (modem.isRegistered && modem.isPowered) {
-    modemRegBadge.textContent = 'CREG: REGISTERED';
-    modemRegBadge.className = 'badge badge-success';
-  } else {
-    modemRegBadge.textContent = 'CREG: NO SERVICE';
-    modemRegBadge.className = 'badge badge-danger';
-  }
-
-  // Active Incident SMS Preview update
-  if (alert.activeIncident) {
-    const inc = alert.activeIncident;
-    smsStatusTag.textContent = inc.communication.smsStatus;
-    if (inc.communication.smsStatus === 'SENT') smsStatusTag.className = 'tag tag-sent';
-    else if (inc.communication.smsStatus === 'FAILED') smsStatusTag.className = 'tag tag-failed';
-    else smsStatusTag.className = 'tag tag-pending';
-
-    const locText = inc.location?.location?.lat
-      ? `Loc: ${inc.location.location.lat.toFixed(5)}, ${inc.location.location.lng.toFixed(5)}\nMap: ${inc.location.location.mapUrl}`
-      : 'GPS: NO_FIX (Searching satellites)';
-
-    smsPayloadText.textContent = `CRASHSENSE ALERT!\nID: ${inc.incidentId}\nSeverity: ${inc.severity}\nPeak: ${inc.telemetry.peakMagnitude.toFixed(1)}g\n${locText}\nDriver unresp.`;
+  const hasIncident = Boolean(incident.id);
+  $('incidentBadge').textContent = hasIncident ? (incident.status || 'Recorded') : 'No incident';
+  $('incidentBadge').className = `small-status ${incident.status === 'EMERGENCY_ALERT' ? 'sensor-error' : ''}`;
+  $('incidentEmpty').classList.toggle('hidden', hasIncident);
+  $('incidentDetails').classList.toggle('hidden', !hasIncident);
+  if (hasIncident) {
+    $('incidentId').textContent = incident.id;
+    $('incidentPeak').textContent = `${formatNumber(incident.peakG, 2)} g`;
+    $('incidentGyro').textContent = `${formatNumber(incident.peakGyro, 1)} °/s`;
+    $('incidentStatus').textContent = incident.status || '--';
+    $('incidentReason').textContent = incident.reason || '';
   }
 }
 
-// Scenario Trigger API
-async function triggerScenario(scenario) {
+async function refreshFromBoard() {
+  if (requestInFlight) return;
+  requestInFlight = true;
   try {
-    await fetch('/api/scenario', {
+    const response = await fetch('/api/device/data', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Device request failed (${response.status})`);
+    updateDashboard(await response.json());
+    if (locationAuthorized) await refreshPrivateLocation();
+  } catch (error) {
+    showOffline(error.message);
+  } finally {
+    requestInFlight = false;
+  }
+}
+
+async function cancelCountdown() {
+  if (!locationAuthorized) {
+    openLocationLogin('Sign in before sending a vehicle command.');
+    return;
+  }
+  const button = $('cancelButton');
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/device/cancel', { method: 'POST' });
+    if (!response.ok) throw new Error('Cancel request failed');
+    await refreshFromBoard();
+  } catch (error) {
+    showOffline(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+$('cancelButton').addEventListener('click', cancelCountdown);
+ $('unlockLocation').addEventListener('click', () => openLocationLogin());
+ $('lockLocation').addEventListener('click', async () => {
+  try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
+  setLocationAccess(false);
+ });
+ $('closeAuth').addEventListener('click', () => $('locationDialog').close());
+ $('locationDialog').addEventListener('click', event => {
+  if (event.target === $('locationDialog')) $('locationDialog').close();
+ });
+ $('authForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = $('authSubmit');
+  button.disabled = true;
+  $('authError').textContent = '';
+  try {
+    const response = await fetch('/api/auth/login', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scenario, durationMs: 3000 })
+      body: JSON.stringify({ username: $('authUsername').value, password: $('authPassword').value })
     });
-    appendATLog('PHYSICS_SIM', `Scenario triggered: ${scenario}`, 'sys');
-  } catch (err) {
-    console.error('Trigger scenario error:', err);
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Sign-in failed');
+    locationAuthConfigured = true;
+    $('authPassword').value = '';
+    $('locationDialog').close();
+    setLocationAccess(true);
+    await refreshPrivateLocation();
+  } catch (error) {
+    $('authError').textContent = error.message;
+  } finally {
+    button.disabled = false;
   }
-}
+ });
+checkAuthStatus();
+refreshFromBoard();
+setInterval(refreshFromBoard, 1000);
 
-// Fault Injection APIs
-async function toggleSensor(connected) {
-  await fetch('/api/fault', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sensorConnected: connected })
-  });
-}
-
-async function toggleGpsFix(hasFix) {
-  await fetch('/api/fault', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ gpsHasFix: hasFix })
-  });
-}
-
-async function makeGpsStale() {
-  await fetch('/api/fault', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ gpsStaleAgeSec: 150 })
-  });
-  appendATLog('GNSS_SIM', 'GPS fix forced to STALE (Age: 150s)', 'sys');
-}
-
-async function toggleModemPower(powered) {
-  await fetch('/api/fault', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ modemPower: powered })
-  });
-}
-
-async function toggleModemReg(registered) {
-  await fetch('/api/fault', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ modemRegistered: registered })
-  });
-}
-
-async function toggleModemFailure(forceFail) {
-  await fetch('/api/fault', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ modemForceFailure: forceFail })
-  });
-}
-
-async function resetSimulator() {
-  await fetch('/api/reset', { method: 'POST' });
-  document.getElementById('chkSensorOnline').checked = true;
-  document.getElementById('chkGpsFix').checked = true;
-  document.getElementById('chkModemPower').checked = true;
-  document.getElementById('chkModemReg').checked = true;
-  document.getElementById('chkModemFail').checked = false;
-  appendATLog('SYSTEM', 'Simulator baseline successfully restored.', 'sys');
-  buzzer.stopBeeping();
-  refreshIncidentLogs();
-}
-
-// AT Terminal Controls
-function appendATLog(cmd, resp, type = 'resp') {
-  const lineCmd = document.createElement('div');
-  lineCmd.className = 'log-line at';
-  lineCmd.textContent = `> ${cmd}`;
-  atConsole.appendChild(lineCmd);
-
-  if (resp) {
-    const lineResp = document.createElement('div');
-    lineResp.className = `log-line ${type}`;
-    lineResp.textContent = `< ${resp}`;
-    atConsole.appendChild(lineResp);
+// Independent 3D showroom interaction. It never reads or changes device telemetry.
+(function initCarPlayground() {
+  const mount = $('carCanvas');
+  if (!mount || !window.THREE) {
+    mount.textContent = 'Interactive 3D view is unavailable in this browser.';
+    return;
   }
 
-  atConsole.scrollTop = atConsole.scrollHeight;
-}
+  const THREE = window.THREE;
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color('#e8ede5');
+  scene.fog = new THREE.Fog('#e8ede5', 70, 220);
+  const camera = new THREE.PerspectiveCamera(34, 1, .1, 100);
+  camera.position.set(5.7, 4.2, 7.2);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.08;
+  renderer.domElement.setAttribute('aria-label', 'Interactive 3D model of a car on a display platform');
+  renderer.domElement.tabIndex = 0;
+  mount.appendChild(renderer.domElement);
 
-function clearATConsole() {
-  atConsole.innerHTML = '<div class="log-line sys">[SYSTEM] AT Terminal Cleared</div>';
-}
+  scene.add(new THREE.HemisphereLight('#f7fff8', '#708274', 2.0));
+  const keyLight = new THREE.DirectionalLight('#fff7e7', 3.2);
+  keyLight.position.set(-4, 8, 5);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.set(1024, 1024);
+  scene.add(keyLight);
+  const rimLight = new THREE.DirectionalLight('#b7e4cb', 1.8);
+  rimLight.position.set(4, 5, -6);
+  scene.add(rimLight);
 
-async function sendCustomAT() {
-  const cmd = atInput.value.trim();
-  if (!cmd) return;
-  atInput.value = '';
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: '#e8ede5', roughness: .92 }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -.12;
+  floor.receiveShadow = true;
+  scene.add(floor);
 
-  try {
-    const res = await fetch('/api/at_command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: cmd })
-    });
-    const data = await res.json();
-    appendATLog(cmd, data.response, data.success ? 'resp' : 'err');
-  } catch (err) {
-    appendATLog(cmd, 'FETCH ERROR', 'err');
+  const platform = new THREE.Mesh(new THREE.CylinderGeometry(40, 40, .16, 128), new THREE.MeshStandardMaterial({ color: '#f5f6f0', roughness: .76, metalness: .02 }));
+  platform.position.y = -.04;
+  platform.receiveShadow = true;
+  scene.add(platform);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(39.8, .018, 8, 160), new THREE.MeshStandardMaterial({ color: '#9db9a3', roughness: .5 }));
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = .045;
+  scene.add(rim);
+  const grid = new THREE.GridHelper(100, 100, '#b8cbbb', '#d5ded4');
+  grid.position.y = .055;
+  grid.material.transparent = true;
+  grid.material.opacity = .34;
+  scene.add(grid);
+
+  const car = new THREE.Group();
+  const carPaint = new THREE.MeshStandardMaterial({ color: '#145c49', metalness: .32, roughness: .27 });
+  const darkPaint = new THREE.MeshStandardMaterial({ color: '#103d34', metalness: .22, roughness: .32 });
+  const glass = new THREE.MeshStandardMaterial({ color: '#91b4a9', metalness: .36, roughness: .2, transparent: true, opacity: .88 });
+  const trim = new THREE.MeshStandardMaterial({ color: '#18312c', metalness: .5, roughness: .42 });
+  const chrome = new THREE.MeshStandardMaterial({ color: '#c8d4cc', metalness: .82, roughness: .22 });
+  const rubber = new THREE.MeshStandardMaterial({ color: '#202b28', roughness: .82 });
+  const lamp = new THREE.MeshStandardMaterial({ color: '#fff0c2', emissive: '#ffdf91', emissiveIntensity: 1.2, roughness: .24 });
+
+  function sideShape(points, depth, material, yOffset = 0) {
+    const shape = new THREE.Shape();
+    shape.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) shape.lineTo(points[i][0], points[i][1]);
+    shape.closePath();
+    const geometry = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelSegments: 2, steps: 1, bevelSize: .035, bevelThickness: .025 });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.rotation.y = Math.PI / 2;
+    mesh.position.set(-depth / 2, yOffset, 0);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    car.add(mesh);
+    return mesh;
   }
-}
 
-function handleAtKey(event) {
-  if (event.key === 'Enter') {
-    sendCustomAT();
+  sideShape([[-1.55,.34],[-1.48,.67],[-1.18,.79],[-.8,1.13],[-.42,1.2],[.43,1.18],[.78,.78],[1.32,.71],[1.52,.52],[1.48,.34]],1.42,carPaint);
+  sideShape([[-.78,.82],[-.42,1.12],[-.28,1.14],[.34,1.12],[.63,.82]],1.445,glass);
+  // Front and rear fascia, bumper, grille, and lights.
+  const box = (w,h,d,mat,x,y,z,parent=car) => { const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m; };
+  box(.92,.16,.08,darkPaint,0,.4,-1.54);
+  box(.66,.13,.055,trim,0,.46,-1.595);
+  box(.95,.14,.1,darkPaint,0,.39,1.5);
+  for (const x of [-.49,.49]) {
+    box(.27,.105,.045,lamp,x,.61,-1.47);
+    box(.22,.09,.045,new THREE.MeshStandardMaterial({color:'#a8453b',emissive:'#66221b',roughness:.25}),x,.58,1.48);
+    const mirror=box(.13,.09,.2,carPaint,x*1.42,.78,-.37);
+    mirror.rotation.y=x<0?-.15:.15;
   }
-}
+  // Four wheels with bright hubs; save wheel groups so they can spin while moving.
+  const wheels=[];
+  for (const x of [-.73,.73]) for (const z of [-.94,.94]) {
+    const wheel=new THREE.Group(); wheel.position.set(x,.34,z); car.add(wheel); wheels.push(wheel);
+    const tire=new THREE.Mesh(new THREE.CylinderGeometry(.34,.34,.19,28),rubber);
+    tire.rotation.z=Math.PI/2; tire.castShadow=true; wheel.add(tire);
+    const hub=new THREE.Mesh(new THREE.CylinderGeometry(.19,.19,.205,24),chrome);
+    hub.rotation.z=Math.PI/2; wheel.add(hub);
+    const center=new THREE.Mesh(new THREE.CylinderGeometry(.075,.075,.215,20),darkPaint);
+    center.rotation.z=Math.PI/2; wheel.add(center);
+  }
+  const shadow=new THREE.Mesh(new THREE.CircleGeometry(1.7,48),new THREE.MeshBasicMaterial({color:'#29493b',transparent:true,opacity:.13,depthWrite:false}));
+  shadow.rotation.x=-Math.PI/2; shadow.scale.set(1,1.48,1); shadow.position.y=.045; car.add(shadow);
+  car.position.y=.02;
+  scene.add(car);
 
-// Incident Logs Management
-async function refreshIncidentLogs() {
-  try {
-    const res = await fetch('/api/logs');
-    const data = await res.json();
-    historyTableBody.innerHTML = '';
-
-    if (!data.incidents || data.incidents.length === 0) {
-      historyTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#888;">No incidents recorded yet.</td></tr>';
+  let cameraYaw = .68;
+  let cameraPitch = .38;
+  let cameraDistance = 13;
+  let cameraSideOffset = 2.8;
+  const target = new THREE.Vector3(-Math.cos(cameraYaw)*cameraSideOffset,.55,Math.sin(cameraYaw)*cameraSideOffset);
+  let dragging = false;
+  let lastPointer = {x:0,y:0};
+  const held = new Set();
+  let lastFrame = performance.now();
+  let resizeObserver;
+  function resize() {
+    const w = Math.max(1,mount.clientWidth), h = Math.max(1,mount.clientHeight);
+    renderer.setSize(w,h,false);
+    camera.aspect=w/h;
+    cameraSideOffset=Math.min(3.4,Math.max(.8,cameraDistance*Math.tan(camera.fov*Math.PI/360)*camera.aspect*.62));
+    camera.updateProjectionMatrix();
+  }
+  function updateCamera() {
+    const horizontal=Math.cos(cameraPitch)*cameraDistance;
+    camera.position.set(target.x+Math.sin(cameraYaw)*horizontal,target.y+Math.sin(cameraPitch)*cameraDistance,target.z+Math.cos(cameraYaw)*horizontal);
+    camera.lookAt(target);
+  }
+  function resetCar() { car.position.set(0,.02,0);car.rotation.y=0;cameraYaw=.68;cameraPitch=.38;cameraDistance=13;cameraSideOffset=Math.min(3.4,Math.max(.8,cameraDistance*Math.tan(camera.fov*Math.PI/360)*camera.aspect*.62));target.set(-Math.cos(cameraYaw)*cameraSideOffset,.55,Math.sin(cameraYaw)*cameraSideOffset);updateCamera(); }
+  function driveKey(event, down) {
+    const key=event.key.toLowerCase();
+    const map={w:'forward',arrowup:'forward',s:'reverse',arrowdown:'reverse',a:'left',arrowleft:'left',d:'right',arrowright:'right'};
+    if (!map[key]) return;
+    if ($('locationDialog').open) {
+      if (!down) held.delete(map[key]);
       return;
     }
-
-    data.incidents.forEach(inc => {
-      const tr = document.createElement('tr');
-      const timeStr = new Date(inc.timestamp).toLocaleTimeString();
-      const peakG = inc.telemetry?.peakMagnitude?.toFixed(1) || 'N/A';
-      const gpsState = inc.location?.status || 'N/A';
-      const smsState = inc.communication?.smsStatus || 'N/A';
-
-      tr.innerHTML = `
-        <td>${timeStr}</td>
-        <td><code>${inc.incidentId}</code></td>
-        <td><span class="tag tag-${inc.status.toLowerCase()}">${inc.status}</span></td>
-        <td>${peakG}g</td>
-        <td>${gpsState}</td>
-        <td>${smsState}</td>
-      `;
-      historyTableBody.appendChild(tr);
-    });
-  } catch (err) {
-    console.error('Error fetching logs:', err);
-  }
-}
-
-async function clearIncidentLogs() {
-  await fetch('/api/logs', { method: 'DELETE' });
-  refreshIncidentLogs();
-}
-
-// Nearby Emergency Services Directory
-async function refreshNearbyServices() {
-  try {
-    const res = await fetch('/api/nearby_services');
-    const data = await res.json();
-    nearbyServicesList.innerHTML = '';
-
-    if (!data.results || data.results.length === 0) {
-      nearbyServicesList.innerHTML = '<div style="color:#888; font-size:0.75rem;">No facilities discovered.</div>';
+    const focused = document.activeElement;
+    const typing = focused && (focused.matches('input,textarea,select,[contenteditable="true"]'));
+    const stage = $('carStage');
+    const focusedCar = focused === stage || stage.contains(focused);
+    const neutralFocus = focused === document.body || focused === document.documentElement;
+    if (typing || (!focusedCar && !neutralFocus)) {
+      if (!down) held.delete(map[key]);
       return;
     }
-
-    data.results.forEach(fac => {
-      const item = document.createElement('div');
-      item.className = 'service-item';
-      item.innerHTML = `
-        <div>
-          <div class="service-name">${fac.name}</div>
-          <div style="font-size: 0.68rem; color: #8b949e;">${fac.distanceKm} km away | ${fac.source}</div>
-        </div>
-        <div style="text-align: right;">
-          <div class="service-contact">${fac.contact}</div>
-          <span class="service-type-badge">${fac.type.replace(/_/g, ' ')}</span>
-        </div>
-      `;
-      nearbyServicesList.appendChild(item);
-    });
-  } catch (err) {
-    console.error('Error refreshing nearby services:', err);
+    event.preventDefault();
+    if(down) held.add(map[key]); else held.delete(map[key]);
   }
-}
+  window.addEventListener('keydown',e=>driveKey(e,true));
+  window.addEventListener('keyup',e=>driveKey(e,false));
+  window.addEventListener('blur',()=>held.clear());
+  mount.addEventListener('pointerdown',e=>{if(e.target!==renderer.domElement)return;renderer.domElement.focus({preventScroll:true});dragging=true;lastPointer={x:e.clientX,y:e.clientY};mount.setPointerCapture(e.pointerId);});
+  mount.addEventListener('pointermove',e=>{if(!dragging)return;const dx=e.clientX-lastPointer.x,dy=e.clientY-lastPointer.y;lastPointer={x:e.clientX,y:e.clientY};cameraYaw-=dx*.006;cameraPitch=THREE.MathUtils.clamp(cameraPitch+dy*.004,-.05,.9);updateCamera();});
+  mount.addEventListener('pointerup',()=>{dragging=false;});
+  mount.addEventListener('pointercancel',()=>{dragging=false;});
+  mount.addEventListener('wheel',e=>{cameraDistance=THREE.MathUtils.clamp(cameraDistance+e.deltaY*.005,6.5,13);updateCamera();},{passive:true});
+  document.querySelectorAll('[data-drive]').forEach(button=>{
+    const direction=button.dataset.drive;
+    const down=e=>{e.preventDefault();renderer.domElement.focus({preventScroll:true});held.add(direction);button.setPointerCapture?.(e.pointerId);};
+    const up=e=>{e.preventDefault();held.delete(direction);};
+    button.addEventListener('pointerdown',down);button.addEventListener('pointerup',up);button.addEventListener('pointercancel',up);button.addEventListener('lostpointercapture',up);button.addEventListener('contextmenu',e=>e.preventDefault());
+  });
+  $('resetCar').addEventListener('click',()=>{resetCar();renderer.domElement.focus({preventScroll:true});});
+  $('locationDialog').addEventListener('close',()=>renderer.domElement.focus({preventScroll:true}));
+  resizeObserver=new ResizeObserver(resize);resizeObserver.observe(mount);resize();updateCamera();
 
-// Initialize on DOM load
-window.addEventListener('DOMContentLoaded', () => {
-  setupSSE();
-  refreshIncidentLogs();
-  refreshNearbyServices();
-});
+  function animate(now) {
+    requestAnimationFrame(animate);
+    const dt=Math.min((now-lastFrame)/1000,.04);lastFrame=now;
+    cameraSideOffset=Math.min(3.4,Math.max(.8,cameraDistance*Math.tan(camera.fov*Math.PI/360)*camera.aspect*.62));
+    const steering=(held.has('left')?1:0)+(held.has('right')?-1:0);
+    const throttle=(held.has('forward')?1:0)-(held.has('reverse')?1:0);
+    if(throttle){
+      car.rotation.y+=steering*dt*1.65*Math.sign(throttle);
+      const speed=2.5*throttle*dt;
+      const nextX=car.position.x-Math.sin(car.rotation.y)*speed;
+      const nextZ=car.position.z-Math.cos(car.rotation.y)*speed;
+      if(Math.hypot(nextX,nextZ)<32){car.position.x=nextX;car.position.z=nextZ;for(const wheel of wheels)wheel.rotation.x-=speed*2.6;}
+    } else if(steering){car.rotation.y+=steering*dt*.85;}
+    const follow=Math.min(1,dt*3.5);
+    const followTargetX=car.position.x-Math.cos(cameraYaw)*cameraSideOffset;
+    const followTargetZ=car.position.z+Math.sin(cameraYaw)*cameraSideOffset;
+    target.x+=(followTargetX-target.x)*follow;
+    target.z+=(followTargetZ-target.z)*follow;
+    updateCamera();
+    renderer.render(scene,camera);
+  }
+  requestAnimationFrame(animate);
+})();

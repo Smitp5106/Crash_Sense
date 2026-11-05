@@ -331,3 +331,4 @@ class AlertManager extends EventEmitter {
 }
 
 module.exports = AlertManager;
+

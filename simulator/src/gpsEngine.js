@@ -267,3 +267,4 @@ class GPSEngine extends EventEmitter {
 }
 
 module.exports = GPSEngine;
+

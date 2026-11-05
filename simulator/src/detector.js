@@ -222,3 +222,4 @@ class AccidentDetector extends EventEmitter {
 }
 
 module.exports = AccidentDetector;
+

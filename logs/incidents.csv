@@ -1,1 +1,4 @@
 Timestamp,IncidentID,Status,Severity,Reason,MagnitudeG,GyroDegS,GPS_Status,Latitude,Longitude,FixAgeSec,SMS_Status,SMS_Attempts
+"2026-10-28T06:53:13.866Z","INC-20261028-1001","CANCELLED","HIGH","High-G Impact Verified (5.56g, Gyro: 368.9°/s, Jerk: 67.5g/s)","5.56","368.94","STALE_FIX","37.774929","-122.419416","64","PENDING","0"
+"2026-10-28T06:54:21.133Z","INC-20261028-1002","SENT","HIGH","High-G Impact Verified (5.30g, Gyro: 391.9°/s, Jerk: 69.0g/s)","5.3","391.91","VALID_FIX","37.774929","-122.419416","0","SENT","1"
+"2026-10-28T06:55:21.783Z","INC-20261028-1003","SENT","HIGH","Vehicle Rollover Detected (Roll Δ: 49.1°, Gyro: 376.7°/s)","5.671","376.72","STALE_FIX","37.774929","-122.419416","184","SENT","1"

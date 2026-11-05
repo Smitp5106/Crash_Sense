@@ -248,3 +248,4 @@ class SensorEngine extends EventEmitter {
 }
 
 module.exports = SensorEngine;
+
