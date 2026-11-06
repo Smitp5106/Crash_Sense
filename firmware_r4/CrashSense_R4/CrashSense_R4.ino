@@ -114,7 +114,9 @@ float currentPitch = 0.0;
 // GPS Cache
 double lastValidLat = 0.0;
 double lastValidLng = 0.0;
-float lastValidSpeedKmh = 0.0;
+float filteredSpeedKmh = 0.0;
+bool speedStationary = false;
+unsigned long stationaryCandidateSince = 0;
 unsigned long lastValidFixTime = 0;
 bool hasValidGpsFix = false;
 bool mpuReady = false;
@@ -516,7 +518,7 @@ void handleHttpClient(WiFiClient &client) {
     client.println(F("Connection: close"));
     client.println();
 
-    float curSpeed = gps.speed.isValid() ? gps.speed.kmph() : lastValidSpeedKmh;
+    float curSpeed = filteredSpeedKmh;
     unsigned long fixAge = gps.location.isValid()
                                ? (gps.location.age() / 1000)
                                : ((millis() - lastValidFixTime) / 1000);
@@ -568,6 +570,8 @@ void handleHttpClient(WiFiClient &client) {
     client.print(F(","));
     client.print(F("\"speedKmh\":"));
     client.print(curSpeed, 1);
+    client.print(F(",\"stationary\":"));
+    client.print(speedStationary ? F("true") : F("false"));
     client.print(F(","));
     client.print(F("\"satellites\":"));
     client.print(gps.satellites.value());
@@ -671,8 +675,7 @@ void triggerCrash(const char *reason, float simulatedPeakG,
   activeIncident.timestamp = String(millis() / 1000) + "s uptime";
   activeIncident.peakG = (simulatedPeakG > 0) ? simulatedPeakG : peakAccelG;
   activeIncident.peakGyro = (simulatedGyro > 0) ? simulatedGyro : peakGyroDegS;
-  activeIncident.speedKmh =
-      gps.speed.isValid() ? gps.speed.kmph() : lastValidSpeedKmh;
+  activeIncident.speedKmh = filteredSpeedKmh;
   activeIncident.latitude =
       gps.location.isValid() ? gps.location.lat() : lastValidLat;
   activeIncident.longitude =
@@ -803,8 +806,27 @@ void evaluateKinematics() {
     lastValidFixTime = millis();
     hasValidGpsFix = true;
   }
-  if (gps.speed.isValid()) {
-    lastValidSpeedKmh = gps.speed.kmph();
+  if (gps.speed.isUpdated() && gps.speed.isValid()) {
+    const float rawSpeedKmh = gps.speed.kmph();
+    // Use change and rotation rather than an absolute 1 g threshold, since
+    // inexpensive MPU boards can have a small accelerometer offset.
+    const bool motionStill = mpuReady && gyroMag < 5.0f && currentJerk < 1.5f;
+
+    // Ignore low-speed GPS drift only after the MPU also confirms stillness.
+    if (motionStill && rawSpeedKmh <= 1.8f) {
+      if (stationaryCandidateSince == 0) stationaryCandidateSince = now;
+      speedStationary = (now - stationaryCandidateSince) >= 3000UL;
+    } else if (!motionStill || rawSpeedKmh >= 2.8f) {
+      stationaryCandidateSince = 0;
+      speedStationary = false;
+    }
+
+    if (speedStationary) {
+      filteredSpeedKmh = 0.0f;
+    } else {
+      filteredSpeedKmh = 0.65f * filteredSpeedKmh + 0.35f * rawSpeedKmh;
+      if (filteredSpeedKmh < 0.8f) filteredSpeedKmh = 0.0f;
+    }
   }
 
   // If already in countdown or alert, don't re-trigger
@@ -896,7 +918,7 @@ String buildCloudTelemetryJson() {
   const bool hasFix = gps.location.isValid();
   const double latitude = hasFix ? gps.location.lat() : lastValidLat;
   const double longitude = hasFix ? gps.location.lng() : lastValidLng;
-  const float speedKmh = gps.speed.isValid() ? gps.speed.kmph() : lastValidSpeedKmh;
+  const float speedKmh = filteredSpeedKmh;
   const unsigned long fixAgeSec = hasFix
       ? gps.location.age() / 1000
       : (lastValidFixTime ? (millis() - lastValidFixTime) / 1000 : 0);
@@ -936,6 +958,7 @@ String buildCloudTelemetryJson() {
   json += F(",\"latitude\":"); json += String(latitude, 6);
   json += F(",\"longitude\":"); json += String(longitude, 6);
   json += F(",\"speedKmh\":"); json += String(speedKmh, 1);
+  json += F(",\"stationary\":"); json += speedStationary ? F("true") : F("false");
   json += F(",\"satellites\":"); json += String(gps.satellites.value());
   json += F(",\"fixAgeSec\":"); json += String(fixAgeSec);
   json += F(",\"mapUrl\":"); appendJsonString(json, mapUrl);

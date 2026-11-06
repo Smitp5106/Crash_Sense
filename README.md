@@ -9,6 +9,7 @@ The interactive 3D car is a visual background playground only. It does not creat
 - Public landing page with account registration and sign-in.
 - Per-account device enrollment with a unique device token for each UNO R4.
 - Live telemetry and exact location for the signed-in device owner.
+- A lightweight on-device GPS + MPU stationary filter that suppresses low-speed GPS drift.
 - A separate Control Room page, limited to administrator-approved accounts, showing active crash alerts and their reported locations across registered devices.
 - Responsive 3D background car that can be driven with WASD or arrow keys and rotated by dragging.
 
@@ -49,6 +50,10 @@ Set `DATABASE_URL` to the database's internal connection URL, `HOST=0.0.0.0`, `N
 6. Open the dashboard using the same account that registered the board. The board and laptop can use different Wi-Fi networks as long as both have internet access.
 
 See [HARDWARE_SETUP.md](HARDWARE_SETUP.md) and [CIRCUIT_AND_PIN_MAPPING.md](CIRCUIT_AND_PIN_MAPPING.md) for sensor wiring and pin details.
+
+### Low-speed GPS filtering
+
+GPS speed may drift slightly when the vehicle is stopped. The firmware reports stationary speed as `0.0 km/h` after GPS stays at or below `1.8 km/h` and the MPU6500 confirms low motion for three seconds. It releases the stationary state when motion is detected or GPS speed reaches `2.8 km/h`, and smooths readings between those thresholds. This is a small sensor-fusion rule, not a trained AI model; very slow movement can be reported as stationary. Test and tune it for your installation.
 
 ## Approve a Control Room account
 

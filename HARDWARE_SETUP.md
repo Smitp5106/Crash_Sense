@@ -35,3 +35,5 @@ The board-local web page and public multi-user dashboard are separate clients. T
 **Privacy:** the board's unauthenticated local HTTP API omits exact coordinates and map links. Exact GPS is available through the authenticated device-owner dashboard or the administrator-approved Control Room. Keep the board on a trusted Wi-Fi network.
 
 Check sensor readings while stationary and GPS outdoors before relying on the readings for a demonstration. This is a prototype, not certified safety equipment.
+
+The firmware combines low GPS speed with stable MPU6500 readings for three seconds before reporting stationary speed as zero. It uses a speed hysteresis band (1.8 km/h to enter, 2.8 km/h to leave) to reduce GPS drift and display flicker. At walking pace or slower, the filter may report zero; adjust the thresholds in `CrashSense_R4.ino` for your tests.

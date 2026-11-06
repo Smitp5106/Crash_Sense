@@ -21,6 +21,7 @@ function showOnline() {
   $('offlineMessage').classList.add('hidden');
 }
 function showPublicLanding() {
+  $('heroLoginButton').classList.remove('hidden');
   $('connectionBadge').textContent = 'Public landing page';
   $('connectionBadge').className = 'connection-label';
   document.querySelector('.live-dot').className = 'live-dot';
@@ -70,6 +71,7 @@ function setAccountMode(mode) {
 }
 function expireSession() {
   authenticated = false;
+  $('heroLoginButton').classList.remove('hidden');
   $('controlRoomLink').classList.add('hidden');
   devices = [];
   selectedDeviceId = '';
@@ -94,6 +96,7 @@ async function checkAuthStatus() {
       return;
     }
     authenticated = true;
+    $('heroLoginButton').classList.add('hidden');
     $('controlRoomLink').classList.toggle('hidden', !status.controlRoom);
     $('accountDialog').close();
     $('loginButton').classList.add('hidden');
@@ -107,6 +110,7 @@ async function checkAuthStatus() {
     $('dataGrid').classList.add('hidden');
     $('noDeviceState').classList.add('hidden');
     showOffline(error.message);
+    $('heroLoginButton').classList.remove('hidden');
     $('loginButton').classList.remove('hidden');
   }
 }
@@ -146,6 +150,10 @@ async function refreshPrivateLocation() {
     const data = await requestJson(`/api/device/location?deviceId=${encodeURIComponent(selectedDeviceId)}`);
     const gps = data.gps || {};
     $('speed').textContent = formatNumber(gps.speedKmh, 1);
+    if (gps.hasFix) {
+      $('gpsBadge').textContent = gps.stationary ? 'Stationary · speed filtered' : 'GPS active · protected';
+      $('gpsBadge').className = 'small-status sensor-ok';
+    }
     $('latitude').textContent = gps.latitude == null ? 'Waiting for fix' : formatNumber(gps.latitude, 6);
     $('longitude').textContent = gps.longitude == null ? 'Waiting for fix' : formatNumber(gps.longitude, 6);
     $('satellites').textContent = gps.satellites ?? '--';
@@ -226,6 +234,7 @@ $('accountForm').addEventListener('submit', async event => {
     const endpoint = accountMode === 'register' ? '/api/auth/register' : '/api/auth/login';
     const result = await requestJson(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: $('accountUsername').value, password }) });
     authenticated = true; $('accountDialog').close(); $('accountPassword').value = ''; $('accountPasswordConfirm').value = '';
+    $('heroLoginButton').classList.add('hidden');
     $('controlRoomLink').classList.toggle('hidden', !result.controlRoom);
     $('loginButton').classList.add('hidden');
     $('accountName').textContent = result.username; $('dashboardTools').classList.remove('hidden'); await loadDevices();
