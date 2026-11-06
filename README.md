@@ -53,7 +53,7 @@ See [HARDWARE_SETUP.md](HARDWARE_SETUP.md) and [CIRCUIT_AND_PIN_MAPPING.md](CIRC
 
 ### Low-speed GPS filtering
 
-GPS speed may drift slightly when the vehicle is stopped. The firmware reports stationary speed as `0.0 km/h` after GPS stays at or below `1.8 km/h` and the MPU6500 confirms low motion for three seconds. It releases the stationary state when motion is detected or GPS speed reaches `2.8 km/h`, and smooths readings between those thresholds. This is a small sensor-fusion rule, not a trained AI model; very slow movement can be reported as stationary. Test and tune it for your installation.
+GPS speed may drift when the vehicle is stopped, especially with a weak satellite fix. The firmware reports stationary speed as `0.0 km/h` after GPS stays at or below `6.0 km/h` and the MPU6500 confirms low motion for five seconds. It releases the stationary state when motion is detected or GPS speed reaches `8.0 km/h`, and smooths readings between those thresholds. The Serial Monitor logs when the filter engages or releases. This is a small sensor-fusion rule, not a trained AI model; very slow movement can be reported as stationary. Test and tune it for your installation.
 
 ## Approve a Control Room account
 

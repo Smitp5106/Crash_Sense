@@ -117,6 +117,7 @@ double lastValidLng = 0.0;
 float filteredSpeedKmh = 0.0;
 bool speedStationary = false;
 unsigned long stationaryCandidateSince = 0;
+bool speedStationaryLogged = false;
 unsigned long lastValidFixTime = 0;
 bool hasValidGpsFix = false;
 bool mpuReady = false;
@@ -812,13 +813,25 @@ void evaluateKinematics() {
     // inexpensive MPU boards can have a small accelerometer offset.
     const bool motionStill = mpuReady && gyroMag < 5.0f && currentJerk < 1.5f;
 
-    // Ignore low-speed GPS drift only after the MPU also confirms stillness.
-    if (motionStill && rawSpeedKmh <= 1.8f) {
-      if (stationaryCandidateSince == 0) stationaryCandidateSince = now;
-      speedStationary = (now - stationaryCandidateSince) >= 3000UL;
-    } else if (!motionStill || rawSpeedKmh >= 2.8f) {
+    // GPS speed can drift several km/h with a weak satellite fix. Allow a
+    // wider low-speed band, but only when the MPU confirms the board is still.
+    if (!motionStill || rawSpeedKmh >= 8.0f) {
       stationaryCandidateSince = 0;
       speedStationary = false;
+    } else if (rawSpeedKmh <= 6.0f) {
+      if (stationaryCandidateSince == 0) stationaryCandidateSince = now;
+      speedStationary = (now - stationaryCandidateSince) >= 5000UL;
+    } else if (!speedStationary) {
+      // Between the entry and exit thresholds, avoid completing an
+      // unlatched stationary candidate from intermittent low readings.
+      stationaryCandidateSince = 0;
+    }
+
+    if (speedStationary != speedStationaryLogged) {
+      Serial.println(speedStationary
+          ? F("[SPEED] Stationary detected; GPS drift filtered to 0.0 km/h.")
+          : F("[SPEED] Movement detected; filtered speed resumed."));
+      speedStationaryLogged = speedStationary;
     }
 
     if (speedStationary) {

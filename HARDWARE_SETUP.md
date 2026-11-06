@@ -36,4 +36,4 @@ The board-local web page and public multi-user dashboard are separate clients. T
 
 Check sensor readings while stationary and GPS outdoors before relying on the readings for a demonstration. This is a prototype, not certified safety equipment.
 
-The firmware combines low GPS speed with stable MPU6500 readings for three seconds before reporting stationary speed as zero. It uses a speed hysteresis band (1.8 km/h to enter, 2.8 km/h to leave) to reduce GPS drift and display flicker. At walking pace or slower, the filter may report zero; adjust the thresholds in `CrashSense_R4.ino` for your tests.
+The firmware combines GPS speed at or below 6.0 km/h with stable MPU6500 readings for five seconds before reporting stationary speed as zero. It exits the stationary state when motion is detected or GPS speed reaches 8.0 km/h. The Serial Monitor logs when the filter engages or releases. At very low driving speeds, the filter may report zero; adjust the thresholds in `CrashSense_R4.ino` for your tests.
