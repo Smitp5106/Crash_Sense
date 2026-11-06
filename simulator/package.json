@@ -1,12 +1,15 @@
 {
   "name": "crashsense-simulator",
   "version": "1.0.0",
-  "description": "CrashSense - Intelligent Accident Detection, Location Tracking, and Emergency Alert PC Simulator",
+  "description": "CrashSense multi-user vehicle telemetry dashboard and device API",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
     "test": "node tests/runner.js"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
   },
   "keywords": [
     "iot",
@@ -18,6 +21,7 @@
     "telematics"
   ],
   "author": "CrashSense Embedded Systems Team",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": { "node": ">=18" }
 }
 

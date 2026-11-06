@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" fill="none">
+  <defs>
+    <linearGradient id="badgeGradPulseIcon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12634e"/>
+      <stop offset="50%" stop-color="#0c4a3b"/>
+      <stop offset="100%" stop-color="#062e24"/>
+    </linearGradient>
+    <filter id="badgeShadowIcon" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#072d23" flood-opacity="0.3"/>
+    </filter>
+    <filter id="beaconGlowIcon" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Container -->
+  <rect x="5" y="5" width="90" height="90" rx="24" fill="url(#badgeGradPulseIcon)" filter="url(#badgeShadowIcon)"/>
+  <rect x="5.75" y="5.75" width="88.5" height="88.5" rx="23.25" fill="none" stroke="#258269" stroke-width="1.5" stroke-opacity="0.4"/>
+
+  <!-- Protective "C" with impact telemetry pulse -->
+  <path d="M 69 31 C 64 26 57 23 49 23 C 34.5 23 23 34.8 23 50 C 23 65.2 34.5 77 49 77 C 57 77 64 74 69 69" 
+        fill="none" 
+        stroke="#ffffff" 
+        stroke-width="12" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"/>
+
+  <!-- Impact Pulse Line -->
+  <path d="M 18 50 L 33 50 L 39 37 L 46 63 L 53 43 L 58 50 L 73 50" 
+        fill="none" 
+        stroke="#72cf32" 
+        stroke-width="3.6" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"
+        filter="url(#beaconGlowIcon)"/>
+
+  <!-- Telemetry Beacon Ping -->
+  <circle cx="73" cy="50" r="4.2" fill="#75d733" filter="url(#beaconGlowIcon)"/>
+  <path d="M 77 42 C 81.5 44.5 84 47 84 50 C 84 53 81.5 55.5 77 58" 
+        fill="none" 
+        stroke="#72cf32" 
+        stroke-width="2.2" 
+        stroke-linecap="round" 
+        stroke-opacity="0.85"/>
+</svg>

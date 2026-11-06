@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4f5ef">
   <title>CrashSense | R4 Monitor</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -12,22 +13,16 @@
   <link rel="stylesheet" href="playground.css">
 </head>
 <body>
-  <div class="world-background" id="carStage" tabindex="0" aria-label="Full-screen interactive 3D car background. Use WASD or arrow keys to drive, drag the background to look around, and use the floating arrow controls.">
+  <div class="world-background" id="carStage" tabindex="0" aria-label="Full-screen interactive 3D car background. Use WASD or arrow keys to drive and drag the background to look around.">
     <div id="carCanvas" class="car-canvas"></div>
     <div class="stage-label"><span class="stage-label-dot"></span>3D CAR <span class="stage-divider">/</span> VISUAL ONLY</div>
-    <div class="car-controls" aria-label="Car movement controls">
-      <button class="drive-button drive-up" data-drive="forward" aria-label="Drive forward">↑</button>
-      <button class="drive-button drive-left" data-drive="left" aria-label="Steer left">←</button>
-      <button class="drive-button drive-down" data-drive="reverse" aria-label="Drive in reverse">↓</button>
-      <button class="drive-button drive-right" data-drive="right" aria-label="Steer right">→</button>
-    </div>
     <button id="resetCar" class="reset-car" type="button" aria-label="Reset car position">Reset view ↺</button>
     <p class="visual-note">Interactive background only · does not affect device readings</p>
   </div>
   <header class="topbar">
-    <a class="brand" href="#top" aria-label="CrashSense home"><span class="brand-mark">C</span><span>crashsense<span class="brand-dot">.</span></span></a>
+    <a class="brand" href="#top" aria-label="CrashSense home"><img class="brand-mark-img" src="logo-icon-pulse.svg" alt="CrashSense" width="30" height="30"><span>crashsense<span class="brand-dot">.</span></span></a>
     <nav aria-label="Main navigation"><a class="active" href="#top">Overview</a><a href="#telemetry">Live data</a><a href="#incident">Incident</a></nav>
-    <div class="header-status"><span class="live-dot"></span><span id="connectionBadge" class="connection-label">Connecting to R4</span><span id="stateBadge" class="state-pill">WAITING</span></div>
+    <div class="header-status"><span class="live-dot"></span><span id="connectionBadge" class="connection-label">Public landing page</span><span id="stateBadge" class="state-pill">GUEST</span><button id="loginButton" class="header-login" type="button">Log in</button></div>
   </header>
 
   <main id="top" class="page-shell">
@@ -35,14 +30,15 @@
       <div class="hero-copy">
         <p class="eyebrow"><span class="eyebrow-line"></span>ARDUINO UNO R4 WIFI · VEHICLE SAFETY</p>
         <h1 id="heroTitle">A clearer view<br>of <span>every journey.</span></h1>
-        <p class="hero-description">Live vehicle status at a glance, with exact location reserved for authorized users.</p>
-        <a class="hero-link" href="#telemetry">Explore live data <span aria-hidden="true">↓</span></a>
+        <p class="hero-description">A connected vehicle safety dashboard for your UNO R4. Register to pair your device and monitor its live readings.</p>
+        <button id="heroLoginButton" class="hero-link" type="button">Log in or create account <span aria-hidden="true">↗</span></button>
       </div>
     </section>
 
     <section id="telemetry" class="section-block" aria-labelledby="telemetryTitle">
-      <div class="section-heading"><div><p class="eyebrow">DEVICE TELEMETRY</p><h2 id="telemetryTitle">Live from your R4</h2></div><span class="refresh-note"><span class="refresh-ring"></span>Updates every second</span></div>
-      <div class="data-grid">
+      <div class="section-heading"><div><p class="eyebrow">DEVICE TELEMETRY</p><h2 id="telemetryTitle">Live from your R4</h2></div><div class="dashboard-tools hidden" id="dashboardTools"><label class="visually-hidden" for="deviceSelect">Select device</label><select id="deviceSelect" aria-label="Select device"></select><button id="addDeviceButton" class="auth-button" type="button">Add device</button><button id="removeDeviceButton" class="lock-button" type="button">Remove device</button><span id="accountName" class="account-name"></span><button id="signOutButton" class="lock-button" type="button">Sign out</button></div><span class="refresh-note"><span class="refresh-ring"></span>Updates every second</span></div>
+      <div id="noDeviceState" class="device-empty hidden"><p class="eyebrow">GET STARTED</p><h3>Register your UNO R4</h3><p>Add a device to create a private connection token. Your dashboard will only show devices registered to your account.</p><button id="firstDeviceButton" class="auth-submit" type="button">Register my first device</button></div>
+      <div id="dataGrid" class="data-grid hidden">
         <article class="data-card motion-card">
           <div class="card-heading"><div class="card-icon motion-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12h4l2.2-6 4.2 12 2.2-6H21"/></svg></div><div><p class="eyebrow">MOTION SENSOR</p><h3>Impact readings</h3></div><span id="sensorBadge" class="small-status">Waiting</span></div>
           <div class="metric-row"><div class="main-metric"><span>Acceleration</span><strong id="totalG">--<small> g</small></strong></div><div class="secondary-metric"><span>Rotation</span><strong id="gyro">-- <small>°/s</small></strong></div><div class="secondary-metric"><span>Jerk</span><strong id="jerk">-- <small>g/s</small></strong></div></div>
@@ -52,8 +48,8 @@
 
         <article class="data-card gps-card">
           <div class="card-heading"><div class="card-icon gps-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></div><div><p class="eyebrow">POSITIONING</p><h3>Vehicle location</h3></div><span id="gpsBadge" class="small-status">Waiting</span></div>
-          <div id="locationLocked" class="location-locked"><div class="privacy-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></svg></div><div><strong>Precise location is restricted</strong><p>Only signed-in authorized users can view coordinates and the map.</p></div><button id="unlockLocation" class="auth-button" type="button">Sign in to view location</button><p id="authConfigNote" class="auth-config-note hidden"></p></div>
-          <div id="locationPrivate" class="hidden"><div class="speed-display"><strong id="speed">--</strong><span>km/h</span><span class="speed-caption">CURRENT SPEED</span></div><div class="location-list"><div><span>Latitude</span><strong id="latitude">--</strong></div><div><span>Longitude</span><strong id="longitude">--</strong></div><div><span>Satellites</span><strong id="satellites">--</strong></div><div><span>Fix age</span><strong id="fixAge">--</strong></div></div><a id="mapLink" class="map-button disabled" href="#" target="_blank" rel="noopener noreferrer" aria-disabled="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/></svg>Open in Maps <span>↗</span></a><button id="lockLocation" class="lock-button" type="button">Lock location &amp; sign out</button></div>
+          <div id="locationLocked" class="location-locked hidden"><div class="privacy-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></svg></div><div><strong>Choose a device</strong><p>Register a device or select one owned by your account.</p></div></div>
+          <div id="locationPrivate" class="hidden"><div class="speed-display"><strong id="speed">--</strong><span>km/h</span><span class="speed-caption">CURRENT SPEED</span></div><div class="location-list"><div><span>Latitude</span><strong id="latitude">--</strong></div><div><span>Longitude</span><strong id="longitude">--</strong></div><div><span>Satellites</span><strong id="satellites">--</strong></div><div><span>Fix age</span><strong id="fixAge">--</strong></div></div><a id="mapLink" class="map-button disabled" href="#" target="_blank" rel="noopener noreferrer" aria-disabled="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/></svg>Open in Maps <span>↗</span></a></div>
         </article>
 
         <article id="incident" class="data-card incident-card">
@@ -66,9 +62,10 @@
 
     <section id="alertBanner" class="alert-banner hidden" aria-live="assertive"><div class="alert-symbol" aria-hidden="true">!</div><div class="alert-copy"><p class="eyebrow">DRIVER ACTION REQUIRED</p><h2 id="alertTitle">Crash suspected</h2><p id="alertReason">Check the vehicle.</p></div><div id="countdownBlock" class="countdown-block"><span>TIME TO CANCEL</span><strong id="countdownValue">--</strong><small>seconds</small></div><button id="cancelButton" class="cancel-button" type="button">Cancel false alarm</button></section>
 
-    <p id="offlineMessage" class="offline-message hidden">No live device telemetry is available. Check the relay connection and board firmware. The 3D car above is only a visual interaction.</p>
+    <p id="offlineMessage" class="offline-message hidden">No live device telemetry is available. Check the device connection and service status. The 3D car is only a visual interaction.</p>
   </main>
-  <dialog id="locationDialog" class="auth-dialog" aria-labelledby="authTitle"><form id="authForm" class="auth-form"><button id="closeAuth" class="auth-close" type="button" aria-label="Close sign-in">×</button><p class="eyebrow">RESTRICTED ACCESS</p><h2 id="authTitle">Sign in to view location</h2><p class="auth-intro">Enter your authorized CrashSense account. Exact GPS details stay hidden until you sign in.</p><label for="authUsername">Username</label><input id="authUsername" name="username" autocomplete="username" required><label for="authPassword">Password</label><input id="authPassword" name="password" type="password" autocomplete="current-password" required><p id="authError" class="auth-error" aria-live="polite"></p><button id="authSubmit" class="auth-submit" type="submit">Sign in securely</button><p class="auth-footnote">Session locks automatically after 30 minutes.</p></form></dialog>
+  <dialog id="accountDialog" class="auth-dialog" aria-labelledby="accountTitle"><form id="accountForm" class="auth-form"><button id="closeAccountDialog" class="auth-close" type="button" aria-label="Close sign-in">×</button><p class="eyebrow">PRIVATE VEHICLE DASHBOARD</p><h2 id="accountTitle">Sign in to CrashSense</h2><p id="accountIntro" class="auth-intro">Your account only shows devices you register.</p><label for="accountUsername">Username</label><input id="accountUsername" name="username" autocomplete="username" minlength="3" maxlength="32" required><label for="accountPassword">Password</label><input id="accountPassword" name="password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required><label id="confirmLabel" for="accountPasswordConfirm" class="hidden">Confirm password</label><input id="accountPasswordConfirm" name="passwordConfirm" type="password" autocomplete="new-password" class="hidden" minlength="12" maxlength="128"><p id="accountError" class="auth-error" aria-live="polite"></p><button id="accountSubmit" class="auth-submit" type="submit">Sign in</button><button id="toggleAccountMode" class="text-button" type="button">Create a new account</button><p class="auth-footnote">Passwords are securely hashed. Keep yours safe; email recovery is not configured.</p></form></dialog>
+  <dialog id="deviceDialog" class="auth-dialog" aria-labelledby="deviceDialogTitle"><form id="deviceForm" class="auth-form"><button id="closeDeviceDialog" class="auth-close" type="button" aria-label="Close device setup">×</button><p class="eyebrow">DEVICE ONBOARDING</p><h2 id="deviceDialogTitle">Register a device</h2><p id="deviceIntro" class="auth-intro">Create a device entry and a private token for its firmware.</p><div id="deviceCreateFields"><label for="deviceName">Device name</label><input id="deviceName" name="deviceName" maxlength="50" placeholder="My UNO R4" required><p id="deviceError" class="auth-error" aria-live="polite"></p><button id="createDeviceButton" class="auth-submit" type="submit">Create device token</button></div><div id="deviceTokenPanel" class="hidden"><p class="token-warning">Copy this token now. It is shown only once and cannot be recovered later.</p><label for="deviceTokenValue">Device token</label><textarea id="deviceTokenValue" readonly rows="3"></textarea><button id="copyDeviceToken" class="auth-button" type="button">Copy token</button><p class="auth-intro">In the firmware’s <code>cloud_secrets.h</code>, set the host to <code id="firmwareHost"></code> and the device token to the copied value. Keep that file private, then upload the sketch.</p><button id="finishDeviceSetup" class="auth-submit" type="button">Done</button></div></form></dialog>
   <footer><span class="footer-brand">CRASHSENSE</span><span>Live device telemetry · UNO R4 WiFi · MPU6500 · NEO-6M</span><span>Prototype dashboard</span></footer>
   <script src="vendor/three.min.js"></script>
   <script src="app.js"></script>

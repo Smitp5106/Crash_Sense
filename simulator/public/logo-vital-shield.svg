@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 100" width="460" height="100" fill="none">
+  <defs>
+    <linearGradient id="badgeGradShield" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12644f"/>
+      <stop offset="50%" stop-color="#0a4637"/>
+      <stop offset="100%" stop-color="#04261d"/>
+    </linearGradient>
+
+    <filter id="badgeShadow3" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#072d23" flood-opacity="0.25"/>
+    </filter>
+
+    <linearGradient id="shieldAccent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#72cf32"/>
+      <stop offset="100%" stop-color="#9bf560"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ICON BADGE (100x100) -->
+  <g transform="translate(0, 0)">
+    <!-- Automotive Shield Contour -->
+    <path d="M 50 8 C 76 8 89 12 90 28 C 91 58 74 81 50 92 C 26 81 9 58 10 28 C 11 12 24 8 50 8 Z" 
+          fill="url(#badgeGradShield)" 
+          filter="url(#badgeShadow3)"/>
+    <path d="M 50 10 C 74 10 87 14 88 29 C 89 57 73 78 50 89 C 27 78 11 57 12 29 C 13 14 26 10 50 10 Z" 
+          fill="none" 
+          stroke="#258269" 
+          stroke-width="1.5" 
+          stroke-opacity="0.45"/>
+
+    <!-- Bold Protective "C" with Angle-Cut Collision Geometry -->
+    <path d="M 68 33 C 64 27 58 24 50 24 C 36 24 25 35.5 25 50 C 25 64.5 36 76 50 76 C 58 76 64 73 68 67" 
+          fill="none" 
+          stroke="#ffffff" 
+          stroke-width="11" 
+          stroke-linecap="round"/>
+
+    <!-- Central Safety Heartbeat / Sensor Pulse Pin -->
+    <path d="M 33 50 H 42 L 48 38 L 54 62 L 60 46 L 64 50 H 70" 
+          fill="none" 
+          stroke="url(#shieldAccent)" 
+          stroke-width="3.4" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"/>
+
+    <!-- GPS / Emergency Satellite Dot -->
+    <circle cx="50" cy="18" r="3.2" fill="#72cf32"/>
+  </g>
+
+  <!-- WORDMARK: "crashsense." -->
+  <g transform="translate(116, 0)">
+    <text x="0" y="65" 
+          fill="#132b25" 
+          font-family="Manrope, 'Segoe UI', system-ui, -apple-system, sans-serif" 
+          font-size="47" 
+          font-weight="800" 
+          letter-spacing="-0.04em">crashsense</text>
+
+    <!-- Signal Beacon Dot with Broadcast Arcs -->
+    <circle cx="265" cy="61" r="5.5" fill="#70c437"/>
+    <path d="M 273 55 C 276.5 58.5 276.5 63.5 273 67" stroke="#70c437" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M 278 51 C 283.5 56.5 283.5 65.5 278 71" stroke="#70c437" stroke-width="1.4" stroke-linecap="round" stroke-opacity="0.6"/>
+  </g>
+</svg>

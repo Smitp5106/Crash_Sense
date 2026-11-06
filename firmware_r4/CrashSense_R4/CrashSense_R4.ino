@@ -1,8 +1,16 @@
 #include "Arduino_LED_Matrix.h"
 #include "WiFiS3.h"
+#include <WiFiSSLClient.h>
 #include <TinyGPS++.h>
 #include <Wire.h>
 #include <math.h>
+
+#if __has_include("cloud_secrets.h")
+#include "cloud_secrets.h"
+#else
+#define CRASH_SENSE_CLOUD_HOST ""
+#define CRASH_SENSE_DEVICE_TOKEN ""
+#endif
 
 // =============================================================================
 // CrashSense — Intelligent Accident Detection, Location Tracking & Wi-Fi Alerts
@@ -14,14 +22,17 @@
 // 1. Wi-Fi Configuration
 // -----------------------------------------------------------------------------
 // Enter your Wi-Fi router or phone mobile hotspot credentials:
-const char *WIFI_SSID = "WifiAn";       // <-- Enter Wi-Fi Name / Hotspot
-const char *WIFI_PASSWORD = "51020062"; // <-- Enter Wi-Fi Password
+const char *WIFI_SSID = "YOUR_WIFI_SSID";       // Enter Wi-Fi name or hotspot
+const char *WIFI_PASSWORD = "YOUR_WIFI_PASSWORD"; // Enter Wi-Fi password
 
 // Standalone Access Point fallback (if router is unavailable or outside):
 const char *AP_SSID = "CrashSense-R4-AP";
 const char *AP_PASS = "password123";
 
 WiFiServer server(80);
+WiFiSSLClient cloudClient;
+const unsigned long CLOUD_PUBLISH_INTERVAL_MS = 3000;
+unsigned long lastCloudPublish = 0;
 
 // -----------------------------------------------------------------------------
 // 2. Hardware Pin Definitions (Arduino UNO R4)
@@ -139,6 +150,8 @@ void cancelCountdown(const char *reason);
 void dispatchEmergencyAlert();
 void resetSystem();
 void evaluateKinematics();
+void publishCloudTelemetry();
+String buildCloudTelemetryJson();
 
 // -----------------------------------------------------------------------------
 // 5. MPU6500 Low-Level Driver (Using your verified register logic)
@@ -862,7 +875,147 @@ void evaluateKinematics() {
 }
 
 // -----------------------------------------------------------------------------
-// 10. Arduino UNO R4 Setup
+// 10. Secure cloud telemetry publisher (Render relay)
+// -----------------------------------------------------------------------------
+void appendJsonString(String &json, const String &value) {
+  json += '"';
+  for (unsigned int i = 0; i < value.length(); i++) {
+    const char c = value[i];
+    if (c == '"' || c == '\\') json += '\\';
+    if (c == '\n') json += F("\\n");
+    else if (c == '\r') json += F("\\r");
+    else json += c;
+  }
+  json += '"';
+}
+
+String buildCloudTelemetryJson() {
+  String json;
+  json.reserve(900);
+
+  const bool hasFix = gps.location.isValid();
+  const double latitude = hasFix ? gps.location.lat() : lastValidLat;
+  const double longitude = hasFix ? gps.location.lng() : lastValidLng;
+  const float speedKmh = gps.speed.isValid() ? gps.speed.kmph() : lastValidSpeedKmh;
+  const unsigned long fixAgeSec = hasFix
+      ? gps.location.age() / 1000
+      : (lastValidFixTime ? (millis() - lastValidFixTime) / 1000 : 0);
+
+  String state = "IDLE";
+  String classification = "NORMAL_MOVEMENT";
+  if (currentState == STATE_CANDIDATE) {
+    state = "CANDIDATE";
+    classification = "SUSPECTED_CRASH";
+  } else if (currentState == STATE_COUNTDOWN) {
+    state = "COUNTDOWN";
+    classification = "SUSPECTED_CRASH";
+  } else if (currentState == STATE_EMERGENCY_ALERT) {
+    state = "EMERGENCY_ALERT";
+    classification = "EMERGENCY_ALERT";
+  } else if (currentState == STATE_CANCELLED) {
+    state = "CANCELLED";
+    classification = "CANCELLED";
+  }
+
+  String mapUrl;
+  if (latitude != 0.0 || longitude != 0.0) {
+    mapUrl = "https://www.google.com/maps?q=" + String(latitude, 6) + "," + String(longitude, 6);
+  }
+
+  json += F("{\"motion\":{\"sensorReady\":");
+  json += mpuReady ? F("true") : F("false");
+  json += F(",\"ax\":"); json += String(ax, 3);
+  json += F(",\"ay\":"); json += String(ay, 3);
+  json += F(",\"az\":"); json += String(az, 3);
+  json += F(",\"totalG\":"); json += String(totalG, 3);
+  json += F(",\"gyroMag\":"); json += String(gyroMag, 2);
+  json += F(",\"jerk\":"); json += String(currentJerk, 2);
+  json += F(",\"roll\":"); json += String(currentRoll, 1);
+  json += F(",\"pitch\":"); json += String(currentPitch, 1);
+  json += F("},\"gps\":{\"hasFix\":"); json += hasFix ? F("true") : F("false");
+  json += F(",\"latitude\":"); json += String(latitude, 6);
+  json += F(",\"longitude\":"); json += String(longitude, 6);
+  json += F(",\"speedKmh\":"); json += String(speedKmh, 1);
+  json += F(",\"satellites\":"); json += String(gps.satellites.value());
+  json += F(",\"fixAgeSec\":"); json += String(fixAgeSec);
+  json += F(",\"mapUrl\":"); appendJsonString(json, mapUrl);
+  json += F("},\"system\":{\"state\":"); appendJsonString(json, state);
+  json += F(",\"countdownSec\":"); json += String(countdownRemainingSec);
+  json += F("},\"detection\":{\"classification\":"); appendJsonString(json, classification);
+  json += F(",\"reason\":"); appendJsonString(json, classificationReason);
+  json += F("},\"incident\":{\"id\":"); appendJsonString(json, activeIncident.id);
+  json += F(",\"status\":"); appendJsonString(json, activeIncident.status);
+  json += F(",\"reason\":"); appendJsonString(json, activeIncident.reason);
+  json += F(",\"peakG\":"); json += String(activeIncident.peakG, 2);
+  json += F(",\"peakGyro\":"); json += String(activeIncident.peakGyro, 1);
+  json += F(",\"speedKmh\":"); json += String(activeIncident.speedKmh, 1);
+  json += F(",\"latitude\":"); json += String(activeIncident.latitude, 6);
+  json += F(",\"longitude\":"); json += String(activeIncident.longitude, 6);
+  json += F(",\"mapUrl\":"); appendJsonString(json, activeIncident.mapUrl);
+  json += F("}}");
+  return json;
+}
+
+void publishCloudTelemetry() {
+  if (strlen(CRASH_SENSE_CLOUD_HOST) == 0 || strlen(CRASH_SENSE_DEVICE_TOKEN) == 0) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  if (!cloudClient.connect(CRASH_SENSE_CLOUD_HOST, 443)) {
+    Serial.println(F("[CLOUD] HTTPS connect failed; will retry."));
+    cloudClient.stop();
+    return;
+  }
+
+  const String payload = buildCloudTelemetryJson();
+  cloudClient.print(F("POST /api/device/telemetry HTTP/1.1\r\nHost: "));
+  cloudClient.print(CRASH_SENSE_CLOUD_HOST);
+  cloudClient.print(F("\r\nAuthorization: Bearer "));
+  cloudClient.print(CRASH_SENSE_DEVICE_TOKEN);
+  cloudClient.print(F("\r\nContent-Type: application/json\r\nContent-Length: "));
+  cloudClient.print(payload.length());
+  cloudClient.print(F("\r\nConnection: close\r\n\r\n"));
+  cloudClient.print(payload);
+
+  String headers;
+  String responseBody;
+  bool readingBody = false;
+  unsigned long deadline = millis() + 3000;
+  while ((cloudClient.connected() || cloudClient.available()) && millis() < deadline) {
+    if (!cloudClient.available()) {
+      delay(1);
+      continue;
+    }
+    const char c = cloudClient.read();
+    deadline = millis() + 250;
+    if (!readingBody) {
+      headers += c;
+      if (headers.endsWith("\r\n\r\n")) readingBody = true;
+    } else {
+      responseBody += c;
+      if (responseBody.length() >= 256) break;
+    }
+  }
+  const bool accepted = headers.indexOf(" 200 ") >= 0;
+  cloudClient.stop();
+  if (!accepted) {
+    Serial.println(F("[CLOUD] Telemetry request was rejected or timed out."));
+    return;
+  }
+
+  static bool reportedOnline = false;
+  if (!reportedOnline) {
+    Serial.println(F("[CLOUD] Telemetry is reaching the CrashSense server."));
+    reportedOnline = true;
+  }
+  if (responseBody.indexOf("\"command\":\"cancel\"") >= 0 && currentState == STATE_COUNTDOWN) {
+    cancelCountdown("Cancelled from authorized CrashSense dashboard");
+  } else if (responseBody.indexOf("\"command\":\"reset\"") >= 0) {
+    resetSystem();
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 11. Arduino UNO R4 Setup
 // -----------------------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
@@ -946,7 +1099,7 @@ void setup() {
 }
 
 // -----------------------------------------------------------------------------
-// 11. Arduino Main Loop
+// 12. Arduino Main Loop
 // -----------------------------------------------------------------------------
 void loop() {
   // 1. Service Incoming GPS Stream continuously
@@ -1023,6 +1176,13 @@ void loop() {
       Serial.println(WiFi.localIP());
       Serial.println(F("-----------------------------\n"));
     }
+  }
+
+  // HTTPS is synchronous on WiFiS3; publish periodically for this prototype.
+  // Sensor sampling and local controls resume immediately after each request.
+  if (millis() - lastCloudPublish >= CLOUD_PUBLISH_INTERVAL_MS) {
+    lastCloudPublish = millis();
+    publishCloudTelemetry();
   }
 
   // 7. Periodic 1-Second Serial Diagnostic Heartbeat

@@ -30,7 +30,7 @@ Confirm breakout pin labels, power, and logic requirements before connecting. Ne
 3. Open Serial Monitor at the baud configured in `setup()` and use the printed network address.
 4. If station Wi-Fi fails, follow the AP fallback details printed by the sketch.
 
-The board-local web page and laptop dashboard are separate clients. The laptop's cross-network cloud path is incomplete until telemetry publishing and command handling are added to the firmware; see [CLOUD_SETUP.md](CLOUD_SETUP.md).
+The board-local web page and public multi-user dashboard are separate clients. To connect across networks, register a device on the deployed site, add its unique token and the site's hostname to the local `cloud_secrets.h` beside the sketch, and upload. See [CLOUD_SETUP.md](CLOUD_SETUP.md).
 
 **Privacy:** the board's unauthenticated local HTTP API now omits latitude, longitude, and map links. Exact GPS can be shown only through the authenticated laptop dashboard once board-to-cloud publishing is implemented. Keep the board on a trusted Wi-Fi network.
 

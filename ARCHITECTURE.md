@@ -1,43 +1,29 @@
 # CrashSense architecture
 
-## Current R4 path
+## Public multi-user service
 
 ```mermaid
 flowchart LR
-  IMU[MPU6500 over I2C] --> MCU[UNO R4 WiFi sketch]
-  GPS[NEO-6M on Serial1] --> MCU
-  MCU --> MATRIX[Built-in LED matrix]
-  MCU --> BUZZER[Optional buzzer]
-  MCU --> LOCAL[Board HTTP API and embedded page]
-  LOCAL --> CLIENT[Browser on reachable local network]
+  BROWSER[Browser over HTTPS] --> APP[CrashSense Node web service]
+  APP --> DB[(PostgreSQL)]
+  R4[UNO R4 WiFi] -->|HTTPS + per-device bearer token| APP
+  APP -->|owner-scoped readings and commands| BROWSER
 ```
 
-The firmware samples motion, evaluates impact and rollover conditions, manages a driver countdown, and serves `/api/data`, `/api/cancel`, and `/api/reset` over its local HTTP server.
+The Node service hosts the static dashboard and handles account registration, password login, sessions, device enrollment, telemetry, and commands. PostgreSQL stores users, hashed sessions, per-user device ownership, hashed device tokens, each device's latest telemetry, and its command queue. No account can read or command another account's devices.
 
-## Cloud relay template (device integration pending)
+The user creates a device from the dashboard. The service displays a random per-device token once; firmware stores that token in a local, Git-ignored `cloud_secrets.h` and sends telemetry to the same HTTPS service. The token hash maps each board request to its registered device. The firmware continues to serve its local HTTP page separately.
 
-```mermaid
-flowchart LR
-  R4[UNO R4 firmware] -. telemetry publishing not implemented .-> CLOUD[User hosted HTTPS relay]
-  LAPTOP[Local Node dashboard proxy] --> CLOUD
-  CLOUD -. queued commands .-> R4
-  BROWSER[Browser] --> LAPTOP
-```
+## Telemetry privacy
 
-`cloud_server/` implements authenticated telemetry receive, latest-reading fetch, and queued `cancel`/`reset` commands. The laptop Node server proxies dashboard reads and commands. The board sketch still uses only its local API and does not post telemetry or retrieve cloud commands, so different-network operation is incomplete.
+Every dashboard data route requires a valid account session and an owned device ID. General telemetry omits exact GPS; the separate location route returns coordinates only after the same owner check. Device tokens are stored as SHA-256 hashes and never returned again after enrollment. Passwords use per-user salt and Node.js `scrypt`; sessions are random HTTP-only cookies stored by hash in PostgreSQL.
 
-The laptop server removes coordinates, speed, and map URLs from public vehicle status. Named users configured in `CRASH_SENSE_LOCATION_USERS` can sign in for private GPS details; cancellation/reset commands require a signed-in session. Host the dashboard behind HTTPS when exposing it beyond localhost.
+## Legacy components
 
-The UNO R4 local HTTP API also omits exact coordinates and map links. Once cloud publishing is implemented, authenticated dashboard users can retrieve precise location through the private dashboard endpoint.
-
-## Legacy simulator
-
-`simulator/src/` retains older synthetic sensor, detector, GPS, mock modem, and alert code as unused legacy files. The current `simulator/server.js` does not import or start them; its live routes do not substitute generated readings.
+`cloud_server/` is the former single-device in-memory relay. The public multi-user app does not depend on it. `simulator/src/` still contains older sensor and modem simulation modules, but the current server does not import them or generate telemetry.
 
 ## Limits
 
-- Use HTTPS for public relay traffic and separate private device/dashboard tokens.
-- Keep the dashboard token in the laptop server environment, never browser code.
-- Relay readings and commands are in memory and are lost on relay restart.
-- Cloud polling cadence, retries, persistence, and firmware TLS behavior remain to be implemented and reviewed.
-- This prototype is not certified for vehicle safety or emergency dispatch.
+- Account email verification, password recovery, MFA, organizations, billing, and abuse moderation are not implemented. Add verified recovery and abuse controls before commercial use.
+- The UNO R4's synchronous HTTPS publisher can pause its loop during network activity. This prototype is not certified for vehicle safety or emergency dispatch.
+- PostgreSQL must use persistent storage. On Render, connect the web service and database in the same region and use the internal database URL.

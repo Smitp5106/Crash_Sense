@@ -1,84 +1,145 @@
 const $ = (id) => document.getElementById(id);
 let requestInFlight = false;
-let locationAuthorized = false;
 let locationRequestInFlight = false;
-let locationAuthConfigured = false;
+let authenticated = false;
+let accountMode = 'login';
+let devices = [];
+let selectedDeviceId = localStorage.getItem('crashsense_device_id') || '';
 
 function setBadge(element, text, className) {
   element.textContent = text;
   element.className = `connection-label ${className}`;
-  const dot = document.querySelector('.live-dot');
-  dot.className = `live-dot ${className}`;
+  document.querySelector('.live-dot').className = `live-dot ${className}`;
 }
-
 function showOffline(message) {
   setBadge($('connectionBadge'), 'No live connection', 'badge-offline');
   $('offlineMessage').classList.remove('hidden');
   $('offlineMessage').title = message || '';
 }
-
 function showOnline() {
-  setBadge($('connectionBadge'), 'R4 connected', 'badge-online');
+  setBadge($('connectionBadge'), 'Device connected', 'badge-online');
   $('offlineMessage').classList.add('hidden');
 }
-
+function showPublicLanding() {
+  $('connectionBadge').textContent = 'Public landing page';
+  $('connectionBadge').className = 'connection-label';
+  document.querySelector('.live-dot').className = 'live-dot';
+  $('stateBadge').textContent = 'GUEST';
+  $('stateBadge').className = 'state-pill';
+}
 function formatNumber(value, digits = 1) {
   const number = Number(value);
   return Number.isFinite(number) ? number.toFixed(digits) : '--';
 }
-
 function clearPrivateLocation() {
-  $('speed').textContent = '--';
-  $('latitude').textContent = '--';
-  $('longitude').textContent = '--';
-  $('satellites').textContent = '--';
-  $('fixAge').textContent = '--';
-  $('mapLink').href = '#';
-  $('mapLink').classList.add('disabled');
-  $('mapLink').setAttribute('aria-disabled', 'true');
+  $('speed').textContent = '--'; $('latitude').textContent = '--'; $('longitude').textContent = '--';
+  $('satellites').textContent = '--'; $('fixAge').textContent = '--';
+  $('mapLink').href = '#'; $('mapLink').classList.add('disabled'); $('mapLink').setAttribute('aria-disabled', 'true');
 }
-
 function setLocationAccess(enabled) {
-  locationAuthorized = enabled;
-  $('locationLocked').classList.toggle('hidden', enabled);
   $('locationPrivate').classList.toggle('hidden', !enabled);
+  $('locationLocked').classList.toggle('hidden', enabled || Boolean(selectedDeviceId));
   if (!enabled) clearPrivateLocation();
 }
-
-function openLocationLogin(message = '') {
-  $('authError').textContent = message;
-  $('authConfigNote').classList.toggle('hidden', locationAuthConfigured);
-  if (!locationAuthConfigured) $('authConfigNote').textContent = 'Location sign-in is not configured on the server yet.';
-  const dialog = $('locationDialog');
-  if (!dialog.open) dialog.showModal();
-  if (locationAuthConfigured) $('authUsername').focus();
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, { cache: 'no-store', credentials: 'same-origin', ...options });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401 && authenticated) expireSession();
+    throw new Error(payload.error || `Request failed (${response.status})`);
+  }
+  return payload;
 }
-
+function showAccountDialog() {
+  if (!$('accountDialog').open) $('accountDialog').showModal();
+  $('accountUsername').focus();
+}
+function setAccountMode(mode) {
+  accountMode = mode;
+  const register = mode === 'register';
+  $('accountTitle').textContent = register ? 'Create your CrashSense account' : 'Sign in to CrashSense';
+  $('accountIntro').textContent = register ? 'Create a private account, then register your UNO R4.' : 'Your account only shows devices you register.';
+  $('accountSubmit').textContent = register ? 'Create account' : 'Sign in';
+  $('toggleAccountMode').textContent = register ? 'Already have an account? Sign in' : 'Create a new account';
+  $('confirmLabel').classList.toggle('hidden', !register);
+  $('accountPasswordConfirm').classList.toggle('hidden', !register);
+  $('accountPassword').autocomplete = register ? 'new-password' : 'current-password';
+  $('accountPassword').minLength = register ? 12 : 1;
+  $('accountPasswordConfirm').required = register;
+  $('accountError').textContent = '';
+}
+function expireSession() {
+  authenticated = false;
+  devices = [];
+  selectedDeviceId = '';
+  setLocationAccess(false);
+  $('dashboardTools').classList.add('hidden');
+  $('dataGrid').classList.add('hidden');
+  $('noDeviceState').classList.add('hidden');
+  $('loginButton').classList.remove('hidden');
+  showAccountDialog();
+}
 async function checkAuthStatus() {
   try {
-    const response = await fetch('/api/auth/status', { cache: 'no-store', credentials: 'same-origin' });
-    const status = await response.json();
-    locationAuthConfigured = Boolean(status.configured);
-    if (status.authenticated) {
-      setLocationAccess(true);
-      await refreshPrivateLocation();
-    }
-  } catch {
-    locationAuthConfigured = false;
-  }
-}
-
-async function refreshPrivateLocation() {
-  if (!locationAuthorized || locationRequestInFlight) return;
-  locationRequestInFlight = true;
-  try {
-    const response = await fetch('/api/device/location', { cache: 'no-store', credentials: 'same-origin' });
-    if (response.status === 401) {
-      setLocationAccess(false);
+    const status = await requestJson('/api/auth/status');
+    if (!status.authenticated || typeof status.username !== 'string' || !status.username) {
+      authenticated = false;
+      $('dashboardTools').classList.add('hidden');
+      $('dataGrid').classList.add('hidden');
+      $('noDeviceState').classList.add('hidden');
+      showPublicLanding();
+      $('loginButton').classList.remove('hidden');
       return;
     }
-    if (!response.ok) throw new Error('Private location is currently unavailable.');
-    const data = await response.json();
+    authenticated = true;
+    $('accountDialog').close();
+    $('loginButton').classList.add('hidden');
+    $('accountName').textContent = status.username;
+    $('dashboardTools').classList.remove('hidden');
+    await loadDevices();
+  } catch (error) {
+    authenticated = false;
+    $('dashboardTools').classList.add('hidden');
+    $('dataGrid').classList.add('hidden');
+    $('noDeviceState').classList.add('hidden');
+    showOffline(error.message);
+    $('loginButton').classList.remove('hidden');
+  }
+}
+async function loadDevices() {
+  const result = await requestJson('/api/devices');
+  devices = result.devices || [];
+  const select = $('deviceSelect');
+  select.replaceChildren();
+  devices.forEach(device => {
+    const option = document.createElement('option');
+    option.value = device.id;
+    option.textContent = device.name;
+    select.appendChild(option);
+  });
+  if (!devices.length) {
+    selectedDeviceId = '';
+    $('dataGrid').classList.add('hidden');
+    $('noDeviceState').classList.remove('hidden');
+    $('locationLocked').classList.remove('hidden');
+    $('locationPrivate').classList.add('hidden');
+    setBadge($('connectionBadge'), 'Register a device', 'badge-offline');
+    return;
+  }
+  if (!devices.some(device => device.id === selectedDeviceId)) selectedDeviceId = devices[0].id;
+  select.value = selectedDeviceId;
+  localStorage.setItem('crashsense_device_id', selectedDeviceId);
+  $('dataGrid').classList.remove('hidden');
+  $('noDeviceState').classList.add('hidden');
+  $('locationLocked').classList.add('hidden');
+  $('locationPrivate').classList.remove('hidden');
+  await refreshFromBoard();
+}
+async function refreshPrivateLocation() {
+  if (!authenticated || !selectedDeviceId || locationRequestInFlight) return;
+  locationRequestInFlight = true;
+  try {
+    const data = await requestJson(`/api/device/location?deviceId=${encodeURIComponent(selectedDeviceId)}`);
     const gps = data.gps || {};
     $('speed').textContent = formatNumber(gps.speedKmh, 1);
     $('latitude').textContent = gps.latitude == null ? 'Waiting for fix' : formatNumber(gps.latitude, 6);
@@ -86,32 +147,17 @@ async function refreshPrivateLocation() {
     $('satellites').textContent = gps.satellites ?? '--';
     $('fixAge').textContent = gps.hasFix ? `${gps.fixAgeSec}s ago` : (gps.latitude != null ? 'Last known' : 'No fix');
     if (gps.mapUrl && String(gps.mapUrl).startsWith('https://')) {
-      $('mapLink').href = gps.mapUrl;
-      $('mapLink').classList.remove('disabled');
-      $('mapLink').setAttribute('aria-disabled', 'false');
+      $('mapLink').href = gps.mapUrl; $('mapLink').classList.remove('disabled'); $('mapLink').setAttribute('aria-disabled', 'false');
     } else {
-      $('mapLink').href = '#';
-      $('mapLink').classList.add('disabled');
-      $('mapLink').setAttribute('aria-disabled', 'true');
+      $('mapLink').href = '#'; $('mapLink').classList.add('disabled'); $('mapLink').setAttribute('aria-disabled', 'true');
     }
-  } catch (error) {
-    clearPrivateLocation();
-    $('latitude').textContent = 'Unavailable';
-    $('longitude').textContent = 'Unavailable';
-    $('authError').textContent = error.message;
-  } finally {
-    locationRequestInFlight = false;
-  }
+  } catch (error) { clearPrivateLocation(); showOffline(error.message); }
+  finally { locationRequestInFlight = false; }
 }
-
 function updateDashboard(data) {
-  const motion = data.motion || {};
-  const gps = data.gps || {};
-  const system = data.system || {};
-  const detection = data.detection || {};
-  const incident = data.incident || {};
+  const motion = data.motion || {}, gps = data.gps || {}, system = data.system || {};
+  const detection = data.detection || {}, incident = data.incident || {};
   showOnline();
-
   const state = system.state || 'UNKNOWN';
   $('stateBadge').textContent = state.replaceAll('_', ' ');
   $('stateBadge').className = `state-pill ${state === 'IDLE' ? 'state-idle' : (state === 'COUNTDOWN' || state === 'EMERGENCY_ALERT' ? 'state-alert' : '')}`;
@@ -120,21 +166,14 @@ function updateDashboard(data) {
   $('totalG').innerHTML = `${formatNumber(motion.totalG, 2)}<small> g</small>`;
   $('gyro').innerHTML = `${formatNumber(motion.gyroMag, 1)} <small>°/s</small>`;
   $('jerk').innerHTML = `${formatNumber(motion.jerk, 1)} <small>g/s</small>`;
-  $('ax').textContent = formatNumber(motion.ax, 2);
-  $('ay').textContent = formatNumber(motion.ay, 2);
-  $('az').textContent = formatNumber(motion.az, 2);
-  $('roll').textContent = `${formatNumber(motion.roll, 1)}°`;
-  $('pitch').textContent = `${formatNumber(motion.pitch, 1)}°`;
+  $('ax').textContent = formatNumber(motion.ax, 2); $('ay').textContent = formatNumber(motion.ay, 2); $('az').textContent = formatNumber(motion.az, 2);
+  $('roll').textContent = `${formatNumber(motion.roll, 1)}°`; $('pitch').textContent = `${formatNumber(motion.pitch, 1)}°`;
   $('classification').textContent = detection.classification || 'Unknown';
   $('classificationReason').textContent = detection.reason || 'No detection details from the board.';
   $('classificationPanel').classList.toggle('alert', state === 'COUNTDOWN' || state === 'EMERGENCY_ALERT');
-
-  const hasFix = Boolean(gps.hasFix);
-  $('gpsBadge').textContent = hasFix ? 'GPS active · protected' : 'No GPS fix';
-  $('gpsBadge').className = `small-status ${hasFix ? 'sensor-ok' : 'sensor-error'}`;
-
-  const countdown = state === 'COUNTDOWN';
-  const emergency = state === 'EMERGENCY_ALERT';
+  $('gpsBadge').textContent = gps.hasFix ? 'GPS active · protected' : 'No GPS fix';
+  $('gpsBadge').className = `small-status ${gps.hasFix ? 'sensor-ok' : 'sensor-error'}`;
+  const countdown = state === 'COUNTDOWN', emergency = state === 'EMERGENCY_ALERT';
   $('alertBanner').classList.toggle('hidden', !countdown && !emergency);
   if (countdown || emergency) {
     $('alertTitle').textContent = countdown ? 'Crash suspected' : 'Emergency alert active';
@@ -143,93 +182,106 @@ function updateDashboard(data) {
     $('countdownValue').textContent = formatNumber(system.countdownSec, 0);
     $('cancelButton').classList.toggle('hidden', !countdown);
   }
-
   const hasIncident = Boolean(incident.id);
   $('incidentBadge').textContent = hasIncident ? (incident.status || 'Recorded') : 'No incident';
   $('incidentBadge').className = `small-status ${incident.status === 'EMERGENCY_ALERT' ? 'sensor-error' : ''}`;
-  $('incidentEmpty').classList.toggle('hidden', hasIncident);
-  $('incidentDetails').classList.toggle('hidden', !hasIncident);
+  $('incidentEmpty').classList.toggle('hidden', hasIncident); $('incidentDetails').classList.toggle('hidden', !hasIncident);
   if (hasIncident) {
-    $('incidentId').textContent = incident.id;
-    $('incidentPeak').textContent = `${formatNumber(incident.peakG, 2)} g`;
+    $('incidentId').textContent = incident.id; $('incidentPeak').textContent = `${formatNumber(incident.peakG, 2)} g`;
     $('incidentGyro').textContent = `${formatNumber(incident.peakGyro, 1)} °/s`;
-    $('incidentStatus').textContent = incident.status || '--';
-    $('incidentReason').textContent = incident.reason || '';
+    $('incidentStatus').textContent = incident.status || '--'; $('incidentReason').textContent = incident.reason || '';
   }
 }
-
 async function refreshFromBoard() {
-  if (requestInFlight) return;
+  if (!authenticated || !selectedDeviceId || requestInFlight) return;
   requestInFlight = true;
   try {
-    const response = await fetch('/api/device/data', { cache: 'no-store' });
-    if (!response.ok) throw new Error(`Device request failed (${response.status})`);
-    updateDashboard(await response.json());
-    if (locationAuthorized) await refreshPrivateLocation();
-  } catch (error) {
-    showOffline(error.message);
-  } finally {
-    requestInFlight = false;
-  }
-}
-
-async function cancelCountdown() {
-  if (!locationAuthorized) {
-    openLocationLogin('Sign in before sending a vehicle command.');
-    return;
-  }
-  const button = $('cancelButton');
-  button.disabled = true;
-  try {
-    const response = await fetch('/api/device/cancel', { method: 'POST' });
-    if (!response.ok) throw new Error('Cancel request failed');
-    await refreshFromBoard();
-  } catch (error) {
-    showOffline(error.message);
-  } finally {
-    button.disabled = false;
-  }
-}
-
-$('cancelButton').addEventListener('click', cancelCountdown);
- $('unlockLocation').addEventListener('click', () => openLocationLogin());
- $('lockLocation').addEventListener('click', async () => {
-  try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
-  setLocationAccess(false);
- });
- $('closeAuth').addEventListener('click', () => $('locationDialog').close());
- $('locationDialog').addEventListener('click', event => {
-  if (event.target === $('locationDialog')) $('locationDialog').close();
- });
- $('authForm').addEventListener('submit', async event => {
-  event.preventDefault();
-  const button = $('authSubmit');
-  button.disabled = true;
-  $('authError').textContent = '';
-  try {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: $('authUsername').value, password: $('authPassword').value })
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Sign-in failed');
-    locationAuthConfigured = true;
-    $('authPassword').value = '';
-    $('locationDialog').close();
-    setLocationAccess(true);
+    const data = await requestJson(`/api/device/data?deviceId=${encodeURIComponent(selectedDeviceId)}`);
+    updateDashboard(data);
     await refreshPrivateLocation();
-  } catch (error) {
-    $('authError').textContent = error.message;
-  } finally {
-    button.disabled = false;
-  }
- });
-checkAuthStatus();
-refreshFromBoard();
-setInterval(refreshFromBoard, 1000);
+  } catch (error) { showOffline(error.message); }
+  finally { requestInFlight = false; }
+}
+async function sendCommand(command) {
+  if (!authenticated || !selectedDeviceId) return;
+  try {
+    await requestJson(`/api/device/${command}?deviceId=${encodeURIComponent(selectedDeviceId)}`, { method: 'POST' });
+    await refreshFromBoard();
+  } catch (error) { showOffline(error.message); }
+}
 
+$('toggleAccountMode').addEventListener('click', () => setAccountMode(accountMode === 'login' ? 'register' : 'login'));
+$('accountForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = $('accountSubmit'); button.disabled = true; $('accountError').textContent = '';
+  const password = $('accountPassword').value;
+  if (accountMode === 'register' && password !== $('accountPasswordConfirm').value) {
+    $('accountError').textContent = 'The passwords do not match.'; button.disabled = false; return;
+  }
+  try {
+    const endpoint = accountMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+    const result = await requestJson(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: $('accountUsername').value, password }) });
+    authenticated = true; $('accountDialog').close(); $('accountPassword').value = ''; $('accountPasswordConfirm').value = '';
+    $('loginButton').classList.add('hidden');
+    $('accountName').textContent = result.username; $('dashboardTools').classList.remove('hidden'); await loadDevices();
+  } catch (error) { $('accountError').textContent = error.message; }
+  finally { button.disabled = false; }
+});
+async function signOut() {
+  try { await requestJson('/api/auth/logout', { method: 'POST' }); } catch {}
+  authenticated = false; devices = []; selectedDeviceId = ''; localStorage.removeItem('crashsense_device_id');
+  $('dashboardTools').classList.add('hidden'); $('dataGrid').classList.add('hidden'); $('noDeviceState').classList.add('hidden');
+  $('loginButton').classList.remove('hidden');
+  showPublicLanding();
+}
+$('loginButton').addEventListener('click', () => { setAccountMode('login'); showAccountDialog(); });
+$('heroLoginButton').addEventListener('click', () => { setAccountMode('login'); showAccountDialog(); });
+$('closeAccountDialog').addEventListener('click', () => $('accountDialog').close());
+$('signOutButton').addEventListener('click', signOut);
+$('removeDeviceButton').addEventListener('click', async () => {
+  const device = devices.find(item => item.id === selectedDeviceId);
+  if (!device || !window.confirm(`Remove ${device.name}? Its token will be revoked and its saved data deleted.`)) return;
+  try {
+    await requestJson(`/api/devices/${encodeURIComponent(device.id)}`, { method: 'DELETE' });
+    selectedDeviceId = '';
+    await loadDevices();
+  } catch (error) { showOffline(error.message); }
+});
+$('deviceSelect').addEventListener('change', async event => {
+  selectedDeviceId = event.target.value; localStorage.setItem('crashsense_device_id', selectedDeviceId); await refreshFromBoard();
+});
+function openDeviceDialog() {
+  $('deviceError').textContent = ''; $('deviceName').value = ''; $('deviceCreateFields').classList.remove('hidden'); $('deviceTokenPanel').classList.add('hidden');
+  $('deviceDialog').showModal(); $('deviceName').focus();
+}
+$('addDeviceButton').addEventListener('click', openDeviceDialog);
+$('firstDeviceButton').addEventListener('click', openDeviceDialog);
+$('closeDeviceDialog').addEventListener('click', () => $('deviceDialog').close());
+$('deviceForm').addEventListener('submit', async event => {
+  event.preventDefault(); $('createDeviceButton').disabled = true; $('deviceError').textContent = '';
+  try {
+    const result = await requestJson('/api/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('deviceName').value }) });
+    $('deviceTokenValue').value = result.deviceToken;
+    $('firmwareHost').textContent = window.location.hostname;
+    selectedDeviceId = result.device.id; localStorage.setItem('crashsense_device_id', selectedDeviceId);
+    $('deviceCreateFields').classList.add('hidden'); $('deviceTokenPanel').classList.remove('hidden');
+    await loadDevices();
+  } catch (error) { $('deviceError').textContent = error.message; }
+  finally { $('createDeviceButton').disabled = false; }
+});
+$('copyDeviceToken').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('deviceTokenValue').value); $('copyDeviceToken').textContent = 'Copied'; }
+  catch { $('deviceTokenValue').focus(); $('deviceTokenValue').select(); $('copyDeviceToken').textContent = 'Select and copy token'; }
+});
+$('finishDeviceSetup').addEventListener('click', async () => { $('deviceDialog').close(); await refreshFromBoard(); });
+$('deviceDialog').addEventListener('close', () => {
+  $('deviceTokenValue').value = '';
+  $('deviceTokenPanel').classList.add('hidden');
+  $('deviceCreateFields').classList.remove('hidden');
+});
+$('cancelButton').addEventListener('click', () => sendCommand('cancel'));
+checkAuthStatus();
+setInterval(refreshFromBoard, 1000);
 // Independent 3D showroom interaction. It never reads or changes device telemetry.
 (function initCarPlayground() {
   const mount = $('carCanvas');
@@ -365,7 +417,7 @@ setInterval(refreshFromBoard, 1000);
     const key=event.key.toLowerCase();
     const map={w:'forward',arrowup:'forward',s:'reverse',arrowdown:'reverse',a:'left',arrowleft:'left',d:'right',arrowright:'right'};
     if (!map[key]) return;
-    if ($('locationDialog').open) {
+    if ($('accountDialog').open || $('deviceDialog').open) {
       if (!down) held.delete(map[key]);
       return;
     }
@@ -396,7 +448,6 @@ setInterval(refreshFromBoard, 1000);
     button.addEventListener('pointerdown',down);button.addEventListener('pointerup',up);button.addEventListener('pointercancel',up);button.addEventListener('lostpointercapture',up);button.addEventListener('contextmenu',e=>e.preventDefault());
   });
   $('resetCar').addEventListener('click',()=>{resetCar();renderer.domElement.focus({preventScroll:true});});
-  $('locationDialog').addEventListener('close',()=>renderer.domElement.focus({preventScroll:true}));
   resizeObserver=new ResizeObserver(resize);resizeObserver.observe(mount);resize();updateCamera();
 
   function animate(now) {
@@ -422,3 +473,4 @@ setInterval(refreshFromBoard, 1000);
   }
   requestAnimationFrame(animate);
 })();
+

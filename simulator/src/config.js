@@ -41,9 +41,8 @@ const CONFIG = {
   LOG_RETENTION_MAX_ENTRIES: 500,
 
   // Server
-  PORT: process.env.PORT || 3000,
-  CLOUD_SERVER_URL: (process.env.CRASH_SENSE_CLOUD_URL || "").replace(/\/$/, ""),
-  CLOUD_DASHBOARD_TOKEN: process.env.CRASH_SENSE_DASHBOARD_TOKEN || ""
+  PORT: Number(process.env.PORT || 3000),
+  HOST: process.env.HOST || (process.env.RENDER ? "0.0.0.0" : "127.0.0.1")
 };
 
 module.exports = CONFIG;

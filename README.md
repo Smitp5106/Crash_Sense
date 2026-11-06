@@ -1,35 +1,23 @@
 # CrashSense R4
 
-CrashSense is an Arduino UNO R4 WiFi accident-monitoring prototype. The current sketch reads an MPU6500 over I2C and a NEO-6M GPS on Serial1, displays state on the built-in LED matrix, sounds an optional buzzer, and serves a small dashboard directly from the board over local Wi-Fi.
+CrashSense is an Arduino UNO R4 WiFi telemetry prototype using an MPU6500, a NEO-6M GPS receiver, and the board’s built-in LED matrix. Its public dashboard supports account registration and per-user device ownership.
 
-The `simulator/` folder name is retained, but its current `server.js` is only the website host and cloud proxy. Older simulation source files remain unused; the dashboard server no longer starts them or serves generated telemetry.
+## Current architecture
 
-## Current status
+- `firmware_r4/`: UNO R4 firmware. Each registered device uses its own bearer token from a local, ignored `cloud_secrets.h` file and posts over HTTPS to the website host.
+- `simulator/`: Node.js dashboard/API server. Despite the historical folder name, it serves the website and contains no active simulated telemetry path.
+- PostgreSQL stores accounts, hashed sessions, registered devices, latest readings, and command queues. Each account can access only its own devices.
+- `cloud_server/`: legacy single-device relay template; not required for the multi-user deployment.
+- 3D car: visual-only interactive background. It never generates device data or crash events.
 
-- Board-local web page and JSON API (`/api/data`, `/api/cancel`, `/api/reset`): implemented in `firmware_r4/CrashSense_R4.ino`.
-- Laptop dashboard: in `simulator/public/`; it requests data through the local Node server. Without cloud URL/token settings, it shows offline and does not substitute synthetic readings.
-- 3D car showcase: playable visual only; WASD/arrow keys or on-screen controls move the car, and dragging rotates the view. It never produces project telemetry or crash events.
-- Cloud relay template: in `cloud_server/`; laptop proxy settings are environment variables described in [CLOUD_SETUP.md](CLOUD_SETUP.md).
-- Location privacy: general status omits precise coordinates; users listed in the server-side account allowlist must sign in before viewing coordinates or the map.
-- **Cross-network telemetry is not complete:** current R4 firmware does not publish to the cloud relay or process its queued commands.
-- `TEST_REPORT.md` is historical simulator evidence, not validation of physical hardware or cloud operation.
+## Deploy
 
-## Run the board dashboard
+Follow [CLOUD_SETUP.md](CLOUD_SETUP.md) to create a Render Postgres database, deploy `simulator/` as a Node web service, configure `DATABASE_URL`, and register a device. Keep the database URL and firmware device tokens private.
 
-1. Open `firmware_r4/CrashSense_R4.ino` in Arduino IDE.
-2. Install `WiFiS3`, `Arduino_LED_Matrix`, and `TinyGPS++` (Wire and math are part of the core).
-3. Configure Wi-Fi credentials locally, select **Arduino UNO R4 WiFi**, and upload.
-4. Open Serial Monitor at the baud rate set in the sketch and use the URL printed by the board. The client must be able to reach the board on the local network.
+## Hardware
 
-If station Wi-Fi fails, the sketch has an access-point fallback; use the network details printed/configured in the sketch.
+See [HARDWARE_SETUP.md](HARDWARE_SETUP.md) and [CIRCUIT_AND_PIN_MAPPING.md](CIRCUIT_AND_PIN_MAPPING.md) for wiring and upload instructions. Select **Arduino UNO R4 WiFi** in Arduino IDE. Set the cloud hostname and the device-specific token in `cloud_secrets.h` beside the sketch before uploading.
 
-## Run the laptop website
+## Security and safety limits
 
-From `simulator/`, run `node server.js`, then open `http://localhost:3000`. Configure the cloud proxy as described in [CLOUD_SETUP.md](CLOUD_SETUP.md). Without those settings the device dashboard stays offline; cross-network display still requires the missing firmware cloud publisher.
-
-## Documentation
-
-- [Hardware setup](HARDWARE_SETUP.md) · [Pin mapping](CIRCUIT_AND_PIN_MAPPING.md) · [Architecture](ARCHITECTURE.md)
-- [Cloud setup](CLOUD_SETUP.md) 
-
-This educational prototype is not certified vehicle safety equipment or an emergency response service. Do not rely on it for real dispatch.
+Account passwords are salted and hashed, and sessions are stored server-side. Telemetry, exact GPS, and commands are private to the device owner. Public sign-up currently has no email verification, account recovery, MFA, organization sharing, or abuse moderation; add those controls before commercial use. CrashSense is an educational prototype, not certified vehicle safety or emergency dispatch equipment. The firmware’s synchronous HTTPS sends can pause sensor sampling; do not rely on it for real-vehicle safety.
