@@ -104,11 +104,18 @@ function validUsername(username) {
   return /^[A-Za-z0-9_.-]{3,32}$/.test(username);
 }
 
+function isControlRoomUser(username) {
+  if (!username) return false;
+  const approved = String(process.env.CRASH_SENSE_CONTROL_ROOM_USERS || '')
+    .split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
+  return approved.includes(username.toLowerCase());
+}
+
 async function createSession(user, req, res) {
   const token = crypto.randomBytes(32).toString('base64url');
   await pool.query('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,to_timestamp($3))', [hash(token), user.id, Date.now() / 1000 + SESSION_MS / 1000]);
   setSessionCookie(req, res, token);
-  return sendJson(res, 200, { authenticated: true, username: user.username, expiresInSec: SESSION_MS / 1000 });
+  return sendJson(res, 200, { authenticated: true, username: user.username, controlRoom: isControlRoomUser(user.username), expiresInSec: SESSION_MS / 1000 });
 }
 
 function publicStatusPayload(data) {
@@ -139,7 +146,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === 'GET' && pathname === '/api/auth/status') {
     const user = await sessionFor(req);
-    return sendJson(res, 200, { authenticated: Boolean(user), username: user?.username || null });
+    return sendJson(res, 200, { authenticated: Boolean(user), username: user?.username || null, controlRoom: isControlRoomUser(user?.username) });
   }
 
   if (req.method === 'POST' && ['/api/auth/register', '/api/auth/login'].includes(pathname)) {
@@ -212,6 +219,38 @@ async function handleApi(req, res, url) {
 
   const user = await sessionFor(req);
   if (!user) return sendJson(res, 401, { error: 'Sign in to access your CrashSense account.' });
+
+  if (req.method === 'GET' && pathname === '/api/control-room/incidents') {
+    if (!isControlRoomUser(user.username)) return sendJson(res, 403, { error: 'Control Room access has not been approved for this account.' });
+    const result = await pool.query(`
+      SELECT id, name, last_seen_at, latest_data->'incident' AS incident, latest_data->'gps' AS gps
+      FROM devices
+      WHERE latest_data->'incident'->>'status' = 'EMERGENCY_ALERT'
+        AND COALESCE(latest_data->'incident'->>'id', '') <> ''
+      ORDER BY last_seen_at DESC NULLS LAST
+    `);
+    const incidents = result.rows.map(row => {
+      const incident = row.incident || {};
+      const gps = row.gps || {};
+      const coordinates = source => {
+        const latitude = source.latitude == null ? null : Number(source.latitude);
+        const longitude = source.longitude == null ? null : Number(source.longitude);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || (latitude === 0 && longitude === 0)) return null;
+        return { latitude, longitude };
+      };
+      const point = coordinates(incident) || coordinates(gps);
+      const latitude = point?.latitude ?? null;
+      const longitude = point?.longitude ?? null;
+      return {
+        deviceId: row.id,
+        deviceName: row.name,
+        lastSeenAt: row.last_seen_at,
+        alert: { incidentId: incident.id, status: incident.status, reason: incident.reason || '', peakG: incident.peakG ?? null, peakGyro: incident.peakGyro ?? null },
+        location: { available: latitude !== null && longitude !== null, latitude, longitude, hasFix: Boolean(gps.hasFix), fixAgeSec: gps.fixAgeSec ?? null }
+      };
+    });
+    return sendJson(res, 200, { incidents });
+  }
 
   if (req.method === 'GET' && pathname === '/api/devices') {
     const result = await pool.query('SELECT id,name,token_hint,last_seen_at,created_at FROM devices WHERE owner_id=$1 ORDER BY created_at', [user.user_id]);

@@ -24,6 +24,7 @@ CrashSense now uses one HTTPS web service for the public dashboard and device AP
    | `HOST` | `0.0.0.0` |
    | `NODE_ENV` | `production` |
    | `CRASH_SENSE_TRUST_PROXY` | `1` (Render's trusted HTTPS proxy supplies the forwarded protocol and client IP) |
+   | `CRASH_SENSE_CONTROL_ROOM_USERS` | Comma-separated usernames approved for global crash-alert and location access; leave blank if unused |
 
 5. If reusing the existing relay service, change its **Root Directory** from `cloud_server` to `simulator`; otherwise create a new web service. Remove the old `DEVICE_TOKEN` and `DASHBOARD_TOKEN` relay variables. Deploy, then open `https://YOUR-SERVICE.onrender.com/healthz`; expect `{"ok":true}`. The home page is the account sign-in/registration flow. Render web services provide HTTPS and public `onrender.com` addresses; the app binds to the required `0.0.0.0` interface. [Render web services](https://render.com/docs/web-services), [Render Postgres connection details](https://render.com/docs/postgresql-creating-connecting)
 
@@ -44,6 +45,12 @@ Use Render’s internal database URL when the app and database share a region; k
 6. Return to the site. The device appears in the selector and its data is scoped to the signed-in account that created it.
 
 To add another board, sign into the same account, register another device, and flash that device’s unique token. Separate accounts cannot list, read, or command one another’s devices. The server stores only a hash of each device token and returns the token only during registration.
+
+## Approve Control Room accounts
+
+The `/control-room.html` page is restricted to accounts listed in the web service's `CRASH_SENSE_CONTROL_ROOM_USERS` environment variable. It returns only current emergency alerts and their reported locations, not normal telemetry or account details. Control Room approval grants visibility across **all registered devices**, so approve only trusted users.
+
+To approve an account, have the person register a regular CrashSense account first. In Render, open the web service's **Environment** settings and set `CRASH_SENSE_CONTROL_ROOM_USERS` to the approved usernames separated by commas (for example, `operator1,operator2`). Save and redeploy. The approved account can then sign in at `/control-room.html`. Remove a username from the variable and redeploy to revoke access. The list is case-insensitive.
 
 ## Local development
 

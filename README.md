@@ -6,13 +6,13 @@ CrashSense is an Arduino UNO R4 WiFi telemetry prototype using an MPU6500, a NEO
 
 - `firmware_r4/`: UNO R4 firmware. Each registered device uses its own bearer token from a local, ignored `cloud_secrets.h` file and posts over HTTPS to the website host.
 - `simulator/`: Node.js dashboard/API server. Despite the historical folder name, it serves the website and contains no active simulated telemetry path.
-- PostgreSQL stores accounts, hashed sessions, registered devices, latest readings, and command queues. Each account can access only its own devices.
+- PostgreSQL stores accounts, hashed sessions, registered devices, latest readings, and command queues. Owners see only their devices; administrator-approved Control Room accounts have a separate alerts-and-location-only view.
 - `cloud_server/`: legacy single-device relay template; not required for the multi-user deployment.
 - 3D car: visual-only interactive background. It never generates device data or crash events.
 
 ## Deploy
 
-Follow [CLOUD_SETUP.md](CLOUD_SETUP.md) to create a Render Postgres database, deploy `simulator/` as a Node web service, configure `DATABASE_URL`, and register a device. Keep the database URL and firmware device tokens private.
+Follow [CLOUD_SETUP.md](CLOUD_SETUP.md) to create a Render Postgres database, deploy `simulator/` as a Node web service, configure `DATABASE_URL`, register a device, and approve Control Room accounts. Keep the database URL and firmware device tokens private.
 
 ## Hardware
 

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f5ef">
+  <title>CrashSense | Control Room</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="control-room.css">
+</head>
+<body class="control-room-page">
+  <header class="topbar control-topbar">
+    <a class="brand" href="/" aria-label="CrashSense home"><img class="brand-mark-img" src="logo-icon-pulse.svg" alt="" width="30" height="30"><span>crashsense<span class="brand-dot">.</span></span></a>
+    <nav aria-label="Main navigation"><a href="/">Vehicle dashboard</a></nav>
+    <div class="header-status"><span class="cr-status-dot"></span><span id="sessionLabel">Sign in required</span><button id="controlSignOut" class="control-signout hidden" type="button">Sign out</button></div>
+  </header>
+  <main class="control-main">
+    <section class="control-intro">
+      <p class="eyebrow"><span class="eyebrow-line"></span>AUTHORIZED OPERATIONS</p>
+      <div class="control-title-row"><div><h1>Control Room</h1><p>Active crash alerts and reported vehicle locations.</p></div><div class="control-refresh"><span class="refresh-ring"></span><span id="refreshLabel">Waiting for sign in</span></div></div>
+    </section>
+    <section id="signInPanel" class="control-panel control-auth-panel">
+      <h2>Sign in to continue</h2>
+      <p class="control-muted">Use your CrashSense account. Control Room access must be approved by an administrator.</p>
+      <form id="controlLoginForm" class="control-login-form">
+        <label for="controlUsername">Username</label><input id="controlUsername" name="username" autocomplete="username" minlength="3" maxlength="32" required>
+        <label for="controlPassword">Password</label><input id="controlPassword" name="password" type="password" autocomplete="current-password" required>
+        <p id="controlLoginError" class="control-error" aria-live="polite"></p>
+        <button id="controlLoginButton" class="auth-submit" type="submit">Sign in securely</button>
+      </form>
+    </section>
+    <section id="approvalPanel" class="control-panel control-message hidden" aria-live="polite">
+      <div class="control-lock" aria-hidden="true">!</div><h2>Access not approved</h2><p id="approvalMessage">An administrator must approve this account for Control Room access.</p>
+    </section>
+    <section id="incidentSection" class="hidden" aria-labelledby="incidentHeading">
+      <div class="control-section-heading"><div><p class="eyebrow">LIVE MONITOR</p><h2 id="incidentHeading">Crash alerts</h2></div><span id="activeCount" class="active-count">0 active alerts</span></div>
+      <div id="incidentList" class="control-incident-list" aria-live="polite"></div>
+      <p class="control-footnote">This view shows only devices currently reporting an emergency alert. A location is shown only when the device has reported coordinates.</p>
+    </section>
+    <footer class="control-footer"><span class="footer-brand">CRASHSENSE CONTROL ROOM</span><span>Restricted to administrator-approved accounts</span></footer>
+  </main>
+  <script src="control-room.js" defer></script>
+</body>
+</html>

@@ -70,6 +70,7 @@ function setAccountMode(mode) {
 }
 function expireSession() {
   authenticated = false;
+  $('controlRoomLink').classList.add('hidden');
   devices = [];
   selectedDeviceId = '';
   setLocationAccess(false);
@@ -84,6 +85,7 @@ async function checkAuthStatus() {
     const status = await requestJson('/api/auth/status');
     if (!status.authenticated || typeof status.username !== 'string' || !status.username) {
       authenticated = false;
+      $('controlRoomLink').classList.add('hidden');
       $('dashboardTools').classList.add('hidden');
       $('dataGrid').classList.add('hidden');
       $('noDeviceState').classList.add('hidden');
@@ -92,6 +94,7 @@ async function checkAuthStatus() {
       return;
     }
     authenticated = true;
+    $('controlRoomLink').classList.toggle('hidden', !status.controlRoom);
     $('accountDialog').close();
     $('loginButton').classList.add('hidden');
     $('accountName').textContent = status.username;
@@ -99,6 +102,7 @@ async function checkAuthStatus() {
     await loadDevices();
   } catch (error) {
     authenticated = false;
+    $('controlRoomLink').classList.add('hidden');
     $('dashboardTools').classList.add('hidden');
     $('dataGrid').classList.add('hidden');
     $('noDeviceState').classList.add('hidden');
@@ -222,6 +226,7 @@ $('accountForm').addEventListener('submit', async event => {
     const endpoint = accountMode === 'register' ? '/api/auth/register' : '/api/auth/login';
     const result = await requestJson(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: $('accountUsername').value, password }) });
     authenticated = true; $('accountDialog').close(); $('accountPassword').value = ''; $('accountPasswordConfirm').value = '';
+    $('controlRoomLink').classList.toggle('hidden', !result.controlRoom);
     $('loginButton').classList.add('hidden');
     $('accountName').textContent = result.username; $('dashboardTools').classList.remove('hidden'); await loadDevices();
   } catch (error) { $('accountError').textContent = error.message; }
@@ -230,6 +235,7 @@ $('accountForm').addEventListener('submit', async event => {
 async function signOut() {
   try { await requestJson('/api/auth/logout', { method: 'POST' }); } catch {}
   authenticated = false; devices = []; selectedDeviceId = ''; localStorage.removeItem('crashsense_device_id');
+  $('controlRoomLink').classList.add('hidden');
   $('dashboardTools').classList.add('hidden'); $('dataGrid').classList.add('hidden'); $('noDeviceState').classList.add('hidden');
   $('loginButton').classList.remove('hidden');
   showPublicLanding();
