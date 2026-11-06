@@ -1,6 +1,6 @@
 # Public CrashSense deployment
 
-CrashSense now uses one HTTPS web service for the public dashboard and device API, backed by PostgreSQL. Anyone can create an account. Each account sees only devices it registers, and every device receives its own bearer token. The firmware sends readings directly to the website host; the former one-token `cloud_server/` relay is not used by this multi-user version.
+CrashSense uses one HTTPS web service for the public dashboard, Control Room, and device API, backed by PostgreSQL. Anyone can create an account. Each account sees only devices it registers, and every device receives its own bearer token. The firmware sends readings directly to the website host.
 
 ## Deploy on Render
 
@@ -26,7 +26,7 @@ CrashSense now uses one HTTPS web service for the public dashboard and device AP
    | `CRASH_SENSE_TRUST_PROXY` | `1` (Render's trusted HTTPS proxy supplies the forwarded protocol and client IP) |
    | `CRASH_SENSE_CONTROL_ROOM_USERS` | Comma-separated usernames approved for global crash-alert and location access; leave blank if unused |
 
-5. If reusing the existing relay service, change its **Root Directory** from `cloud_server` to `simulator`; otherwise create a new web service. Remove the old `DEVICE_TOKEN` and `DASHBOARD_TOKEN` relay variables. Deploy, then open `https://YOUR-SERVICE.onrender.com/healthz`; expect `{"ok":true}`. The home page is the account sign-in/registration flow. Render web services provide HTTPS and public `onrender.com` addresses; the app binds to the required `0.0.0.0` interface. [Render web services](https://render.com/docs/web-services), [Render Postgres connection details](https://render.com/docs/postgresql-creating-connecting)
+5. If reusing the previous relay's Render web service, change its **Root Directory** to `simulator`; otherwise create a new web service. Remove the obsolete `DEVICE_TOKEN` and `DASHBOARD_TOKEN` variables. Deploy, then open `https://YOUR-SERVICE.onrender.com/healthz`; expect `{"ok":true}`. Render web services provide HTTPS and public `onrender.com` addresses; the app binds to the required `0.0.0.0` interface. [Render web services](https://render.com/docs/web-services), [Render Postgres connection details](https://render.com/docs/postgresql-creating-connecting)
 
 Use Render’s internal database URL when the app and database share a region; keep the database URL private. [Render Postgres](https://render.com/docs/postgresql-creating-connecting)
 
@@ -34,7 +34,7 @@ Use Render’s internal database URL when the app and database share a region; k
 
 1. Open the deployed site and select **Create a new account**. Choose a username (3–32 letters, numbers, dots, dashes, or underscores) and a unique password of at least 12 characters. The earlier server-side location allowlist is not migrated; create a fresh account in this system.
 2. Sign in and choose **Register my first device**. Give it a name. CrashSense creates a unique device token and shows it once.
-3. Copy the firmware template beside the sketch you will upload:
+3. In the canonical Arduino sketch folder `firmware_r4/CrashSense_R4/`, copy the firmware template beside the sketch:
 
    ```text
    cloud_secrets.example.h  →  cloud_secrets.h
@@ -66,7 +66,6 @@ Do not use a production database URL in shared or untrusted computers. Local dev
 ## Security and operational limits
 
 - Passwords are salted and hashed with Node.js `scrypt`; browser sessions use random HTTP-only, same-site cookies stored by hash in PostgreSQL and expire after 12 hours. Login and registration attempts are rate-limited per client IP.
-- Exact GPS, telemetry, and commands require an authenticated session and a device owned by that account. The device API accepts per-device bearer tokens over HTTPS.
+- Exact GPS, telemetry, and commands require an authenticated owner session and a device owned by that account. The Control Room API is limited to administrator-approved usernames and returns only current emergency alerts and their reported locations. The device API accepts per-device bearer tokens over HTTPS.
 - Account recovery by email, email verification, MFA, organization/team sharing, billing, and abuse moderation are not implemented. Users who forget their password cannot self-reset it. Add verified email recovery and operational abuse controls before treating this as a commercial public service.
 - This is an educational prototype and not certified vehicle safety equipment or an emergency response service. HTTPS telemetry in the UNO R4 sketch is synchronous and can pause the sensor loop during network requests; do not rely on it for real-vehicle safety or dispatch.
-- `cloud_server/` is the previous single-device relay template. It remains for reference, but the public multi-user website uses its own database-backed device API.

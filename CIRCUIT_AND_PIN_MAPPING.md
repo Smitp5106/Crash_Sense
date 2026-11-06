@@ -1,6 +1,6 @@
 # Circuit and pin mapping
 
-This reflects `firmware_r4/CrashSense_R4.ino`. Check the exact breakout labels before applying power.
+This reflects `firmware_r4/CrashSense_R4/CrashSense_R4.ino`. Check the exact breakout labels before applying power.
 
 | Part | UNO R4 connection | Notes |
 |---|---|---|

@@ -1,4 +1,4 @@
-/* Full-viewport car playground layered behind the dashboard. */
+/* Full-viewport interactive car layered behind the dashboard. */
 .world-background {
   position: fixed;
   inset: 0;
@@ -69,7 +69,7 @@
 footer { position: relative; z-index: 2; background: #f4f5efb8; backdrop-filter: blur(10px); }
 #carStage:focus-visible, .car-canvas canvas:focus-visible { outline: none; }
 
-.stage-label, .stage-help, .car-controls, .reset-car, .visual-note {
+.stage-label, .reset-car, .visual-note {
   position: fixed;
   z-index: 8;
 }
@@ -82,23 +82,7 @@ footer { position: relative; z-index: 2; background: #f4f5efb8; backdrop-filter:
   pointer-events: none;
 }
 
-.stage-help {
-  left: clamp(20px, 4vw, 60px);
-  bottom: 24px;
-  padding: 10px 13px;
-  border: 1px solid #dbe5d9;
-  border-radius: 12px;
-  background: #ffffffeb;
-  font-weight: 700;
-  color: #344b3d;
-  box-shadow: 0 8px 26px #183c2810;
-  backdrop-filter: blur(10px);
-  pointer-events: none;
-}
-
-.car-controls { right: clamp(20px, 4vw, 60px); bottom: 32px; }
-.reset-car { top: 92px; right: clamp(24px, 5vw, 76px); }
-.car-controls, .drive-button, .reset-car { pointer-events: auto; }
+.reset-car { top: 92px; right: clamp(24px, 5vw, 76px); pointer-events: auto; }
 .visual-note { display: none; }
 
 @media (max-width: 650px) {
@@ -113,10 +97,6 @@ footer { position: relative; z-index: 2; background: #f4f5efb8; backdrop-filter:
   .hero-copy h1 { font-size: clamp(2.8rem, 12vw, 4.1rem); }
   .stage-label { top: 84px; right: 116px; font-size: .49rem; }
   .reset-car { top: 82px; right: 13px; }
-  .car-controls { right: 13px; bottom: 46px; grid-template: repeat(2, 44px) / repeat(3, 44px); }
-  .stage-help { left: 14px; right: 160px; bottom: 51px; padding: 8px 10px; }
-  .stage-help .keycap, .stage-help .help-text, .stage-help .help-separator { display: none; }
-  .stage-help::after { content: "Use arrows to drive"; color: #536d5c; font-size: .65rem; font-weight: 700; }
   .section-block { padding-top: 26px; }
   .hero-frame ~ .section-block { padding-top: 14px; }
   footer { margin-top: 26px; }

@@ -26,12 +26,12 @@ Confirm breakout pin labels, power, and logic requirements before connecting. Ne
 ## Upload and connect
 
 1. Install the UNO R4 board package and required libraries: `Arduino_LED_Matrix`, `WiFiS3`, `TinyGPS++`.
-2. Open `firmware_r4/CrashSense_R4.ino`, configure Wi-Fi locally, select **Arduino UNO R4 WiFi** and its USB port, then upload.
+2. Open `firmware_r4/CrashSense_R4/CrashSense_R4.ino`, configure Wi-Fi locally, select **Arduino UNO R4 WiFi** and its USB port, then upload.
 3. Open Serial Monitor at the baud configured in `setup()` and use the printed network address.
 4. If station Wi-Fi fails, follow the AP fallback details printed by the sketch.
 
 The board-local web page and public multi-user dashboard are separate clients. To connect across networks, register a device on the deployed site, add its unique token and the site's hostname to the local `cloud_secrets.h` beside the sketch, and upload. See [CLOUD_SETUP.md](CLOUD_SETUP.md).
 
-**Privacy:** the board's unauthenticated local HTTP API now omits latitude, longitude, and map links. Exact GPS can be shown only through the authenticated laptop dashboard once board-to-cloud publishing is implemented. Keep the board on a trusted Wi-Fi network.
+**Privacy:** the board's unauthenticated local HTTP API omits exact coordinates and map links. Exact GPS is available through the authenticated device-owner dashboard or the administrator-approved Control Room. Keep the board on a trusted Wi-Fi network.
 
 Check sensor readings while stationary and GPS outdoors before relying on the readings for a demonstration. This is a prototype, not certified safety equipment.

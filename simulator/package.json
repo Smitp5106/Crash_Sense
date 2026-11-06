@@ -1,21 +1,19 @@
 {
-  "name": "crashsense-simulator",
+  "name": "crashsense-server",
   "version": "1.0.0",
-  "description": "CrashSense multi-user vehicle telemetry dashboard and device API",
+  "description": "CrashSense multi-user dashboard, Control Room, and device API",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node server.js",
-    "test": "node tests/runner.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "pg": "^8.16.3"
   },
   "keywords": [
     "iot",
-    "esp32",
-    "mpu6050",
-    "sim7600",
+    "arduino-uno-r4",
+    "mpu6500",
     "gps",
     "accident-detection",
     "telematics"

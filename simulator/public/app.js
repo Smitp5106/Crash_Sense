@@ -447,12 +447,6 @@ setInterval(refreshFromBoard, 1000);
   mount.addEventListener('pointerup',()=>{dragging=false;});
   mount.addEventListener('pointercancel',()=>{dragging=false;});
   mount.addEventListener('wheel',e=>{cameraDistance=THREE.MathUtils.clamp(cameraDistance+e.deltaY*.005,6.5,13);updateCamera();},{passive:true});
-  document.querySelectorAll('[data-drive]').forEach(button=>{
-    const direction=button.dataset.drive;
-    const down=e=>{e.preventDefault();renderer.domElement.focus({preventScroll:true});held.add(direction);button.setPointerCapture?.(e.pointerId);};
-    const up=e=>{e.preventDefault();held.delete(direction);};
-    button.addEventListener('pointerdown',down);button.addEventListener('pointerup',up);button.addEventListener('pointercancel',up);button.addEventListener('lostpointercapture',up);button.addEventListener('contextmenu',e=>e.preventDefault());
-  });
   $('resetCar').addEventListener('click',()=>{resetCar();renderer.domElement.focus({preventScroll:true});});
   resizeObserver=new ResizeObserver(resize);resizeObserver.observe(mount);resize();updateCamera();
 

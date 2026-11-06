@@ -8,6 +8,7 @@ flowchart LR
   APP --> DB[(PostgreSQL)]
   R4[UNO R4 WiFi] -->|HTTPS + per-device bearer token| APP
   APP -->|owner-scoped readings and commands| BROWSER
+  APP -->|approved emergency alert and location view| CONTROL[Control Room browser]
 ```
 
 The Node service hosts the static dashboard and handles account registration, password login, sessions, device enrollment, telemetry, and commands. PostgreSQL stores users, hashed sessions, per-user device ownership, hashed device tokens, each device's latest telemetry, and its command queue. Regular accounts can read or command only their own devices.
@@ -20,9 +21,9 @@ The user creates a device from the dashboard. The service displays a random per-
 
 Every owner dashboard data route requires a valid account session and an owned device ID. General telemetry omits exact GPS; the separate location route returns coordinates only after the same owner check. The Control Room route additionally requires an administrator-approved username and filters results to emergency alerts only. Device tokens are stored as SHA-256 hashes and never returned again after enrollment. Passwords use per-user salt and Node.js `scrypt`; sessions are random HTTP-only cookies stored by hash in PostgreSQL.
 
-## Legacy components
+## Runtime components
 
-`cloud_server/` is the former single-device in-memory relay. The public multi-user app does not depend on it. `simulator/src/` still contains older sensor and modem simulation modules, but the current server does not import them or generate telemetry.
+The `simulator/` directory name is retained because the existing Render web service uses it as its root directory. The deployed server only uses `server.js`, `src/database.js`, and the files in `public/`. The background car uses the bundled Three.js library and keyboard/mouse input; it does not synthesize sensor readings or crash alerts.
 
 ## Limits
 
