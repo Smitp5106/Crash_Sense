@@ -31,7 +31,7 @@
         <p class="eyebrow"><span class="eyebrow-line"></span>ARDUINO UNO R4 WIFI · VEHICLE SAFETY</p>
         <h1 id="heroTitle">A clearer view<br>of <span>every journey.</span></h1>
         <p class="hero-description">A connected vehicle safety dashboard for your UNO R4. Register to pair your device and monitor its live readings.</p>
-        <button id="heroLoginButton" class="hero-link" type="button">Log in or create account <span aria-hidden="true">↗</span></button>
+        <button id="heroLoginButton" class="hero-link hidden" type="button">Log in or create account <span aria-hidden="true">↗</span></button>
       </div>
     </section>
 
@@ -68,6 +68,6 @@
   <dialog id="deviceDialog" class="auth-dialog" aria-labelledby="deviceDialogTitle"><form id="deviceForm" class="auth-form"><button id="closeDeviceDialog" class="auth-close" type="button" aria-label="Close device setup">×</button><p class="eyebrow">DEVICE ONBOARDING</p><h2 id="deviceDialogTitle">Register a device</h2><p id="deviceIntro" class="auth-intro">Create a device entry and a private token for its firmware.</p><div id="deviceCreateFields"><label for="deviceName">Device name</label><input id="deviceName" name="deviceName" maxlength="50" placeholder="My UNO R4" required><p id="deviceError" class="auth-error" aria-live="polite"></p><button id="createDeviceButton" class="auth-submit" type="submit">Create device token</button></div><div id="deviceTokenPanel" class="hidden"><p class="token-warning">Copy this token now. It is shown only once and cannot be recovered later.</p><label for="deviceTokenValue">Device token</label><textarea id="deviceTokenValue" readonly rows="3"></textarea><button id="copyDeviceToken" class="auth-button" type="button">Copy token</button><p class="auth-intro">In the firmware’s <code>cloud_secrets.h</code>, set the host to <code id="firmwareHost"></code> and the device token to the copied value. Keep that file private, then upload the sketch.</p><button id="finishDeviceSetup" class="auth-submit" type="button">Done</button></div></form></dialog>
   <footer><span class="footer-brand">CRASHSENSE</span><span>Live device telemetry · UNO R4 WiFi · MPU6500 · NEO-6M</span><span>Prototype dashboard</span></footer>
   <script src="vendor/three.min.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=20261106-2"></script>
 </body>
 </html>
