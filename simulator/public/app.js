@@ -47,7 +47,9 @@ async function requestJson(url, options = {}) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401 && authenticated) expireSession();
-    throw new Error(payload.error || `Request failed (${response.status})`);
+    const error = new Error(payload.error || `Request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
   }
   return payload;
 }
@@ -129,6 +131,7 @@ async function loadDevices() {
     selectedDeviceId = '';
     $('dataGrid').classList.add('hidden');
     $('noDeviceState').classList.remove('hidden');
+    $('deviceWaitingState').classList.add('hidden');
     $('locationLocked').classList.remove('hidden');
     $('locationPrivate').classList.add('hidden');
     setBadge($('connectionBadge'), 'Register a device', 'badge-offline');
@@ -137,17 +140,27 @@ async function loadDevices() {
   if (!devices.some(device => device.id === selectedDeviceId)) selectedDeviceId = devices[0].id;
   select.value = selectedDeviceId;
   localStorage.setItem('crashsense_device_id', selectedDeviceId);
-  $('dataGrid').classList.remove('hidden');
+  showWaitingForDevice(selectedDeviceId, 'Checking for telemetry from this device…');
   $('noDeviceState').classList.add('hidden');
   $('locationLocked').classList.add('hidden');
   $('locationPrivate').classList.remove('hidden');
   await refreshFromBoard();
 }
-async function refreshPrivateLocation() {
-  if (!authenticated || !selectedDeviceId || locationRequestInFlight) return;
+function showWaitingForDevice(deviceId = selectedDeviceId, message = 'No readings have been received from this device yet.') {
+  const device = devices.find(item => item.id === deviceId);
+  $('deviceWaitingTitle').textContent = device ? `Waiting for ${device.name}` : 'Waiting for this device';
+  $('deviceWaitingMessage').textContent = message;
+  $('dataGrid').classList.add('hidden');
+  $('noDeviceState').classList.add('hidden');
+  $('deviceWaitingState').classList.remove('hidden');
+  $('offlineMessage').classList.add('hidden');
+}
+async function refreshPrivateLocation(deviceId = selectedDeviceId) {
+  if (!authenticated || !deviceId || locationRequestInFlight) return;
   locationRequestInFlight = true;
   try {
-    const data = await requestJson(`/api/device/location?deviceId=${encodeURIComponent(selectedDeviceId)}`);
+    const data = await requestJson(`/api/device/location?deviceId=${encodeURIComponent(deviceId)}`);
+    if (deviceId !== selectedDeviceId) return;
     const gps = data.gps || {};
     $('speed').textContent = formatNumber(gps.speedKmh, 1);
     if (gps.hasFix) {
@@ -163,7 +176,9 @@ async function refreshPrivateLocation() {
     } else {
       $('mapLink').href = '#'; $('mapLink').classList.add('disabled'); $('mapLink').setAttribute('aria-disabled', 'true');
     }
-  } catch (error) { clearPrivateLocation(); showOffline(error.message); }
+  } catch (error) {
+    if (deviceId === selectedDeviceId) { clearPrivateLocation(); showOffline(error.message); }
+  }
   finally { locationRequestInFlight = false; }
 }
 function updateDashboard(data) {
@@ -207,11 +222,23 @@ function updateDashboard(data) {
 async function refreshFromBoard() {
   if (!authenticated || !selectedDeviceId || requestInFlight) return;
   requestInFlight = true;
+  const deviceId = selectedDeviceId;
   try {
-    const data = await requestJson(`/api/device/data?deviceId=${encodeURIComponent(selectedDeviceId)}`);
+    const data = await requestJson(`/api/device/data?deviceId=${encodeURIComponent(deviceId)}`);
+    if (deviceId !== selectedDeviceId) return;
+    $('deviceWaitingState').classList.add('hidden');
+    $('dataGrid').classList.remove('hidden');
     updateDashboard(data);
-    await refreshPrivateLocation();
-  } catch (error) { showOffline(error.message); }
+    await refreshPrivateLocation(deviceId);
+  } catch (error) {
+    if (deviceId !== selectedDeviceId) return;
+    if (error.status === 404) showWaitingForDevice(deviceId);
+    else {
+      $('dataGrid').classList.add('hidden');
+      $('deviceWaitingState').classList.add('hidden');
+      showOffline(error.message);
+    }
+  }
   finally { requestInFlight = false; }
 }
 async function sendCommand(command) {
@@ -263,7 +290,11 @@ $('removeDeviceButton').addEventListener('click', async () => {
   } catch (error) { showOffline(error.message); }
 });
 $('deviceSelect').addEventListener('change', async event => {
-  selectedDeviceId = event.target.value; localStorage.setItem('crashsense_device_id', selectedDeviceId); await refreshFromBoard();
+  selectedDeviceId = event.target.value;
+  localStorage.setItem('crashsense_device_id', selectedDeviceId);
+  clearPrivateLocation();
+  showWaitingForDevice(selectedDeviceId, 'Checking for telemetry from this device…');
+  await refreshFromBoard();
 });
 function openDeviceDialog() {
   $('deviceError').textContent = ''; $('deviceName').value = ''; $('deviceCreateFields').classList.remove('hidden'); $('deviceTokenPanel').classList.add('hidden');
